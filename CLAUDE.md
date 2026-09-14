@@ -159,24 +159,24 @@ the implementation against the rules above, not just against itself.
 
 Investigated and approved in session with the project owner; supersedes the more
 general bullets below where they overlap (noted inline). Items 1-3 are quick and
-independent; 4-5 are bigger UI work; 6 is the highest-risk item on this whole document;
-7 is a grab-bag to pick from opportunistically. None of this is implemented yet.
+independent — **done and visually confirmed 2026-09-14**; 4-5 are bigger UI work; 6 is
+the highest-risk item on this whole document; 7 is a grab-bag to pick from
+opportunistically.
 
-1. **Fix: the "Bet:" label is unreadable** (dark grey on dark green — it has no style
-   class, so it falls back to JavaFX's default `Label` color). Fix at the root, not the
-   symptom: add a global `Label { -fx-text-fill: #f0f0f0; }` in `blackjack.css` so this
-   class of bug can't recur as more labels get added. The existing more-specific
-   overrides (`.hand-caption`, `.setup-card Label`, etc.) already take precedence over a
-   bare-element rule, so they keep working unchanged.
+1. ~~**Fix: the "Bet:" label is unreadable**~~ **Done.** Added a global
+   `Label { -fx-text-fill: #f0f0f0; }` in `blackjack.css` rather than patching just that
+   one label, so the bug class can't recur as more labels get added. Follow-up found
+   during verification: `CheckBox` captions aren't `Label` nodes in JavaFX, so the new
+   "Show card count" checkbox needed its own `.check-box` text-fill rule — worth
+   remembering for any future control type (`RadioButton`, `ToggleButton`, etc.) added
+   to the setup form.
 
-2. **Card-counting toggle.** A checkbox on the setup screen, "Show card count" (default
-   off — it's an advantage-play aid, not core to casual play). When off,
-   `shoeInfoLabel` shows only cards-remaining, not the running count.
+2. ~~**Card-counting toggle.**~~ **Done.** "Show card count" checkbox on the setup
+   screen, default off. When off, `shoeInfoLabel` shows only cards-remaining.
 
-3. **Move the count display to bottom-right.** Currently in `topBar` alongside the
-   bankroll. `GameController.root` is already a `StackPane`; add the count label as a
-   third layer with `StackPane.setAlignment(..., Pos.BOTTOM_RIGHT)` rather than
-   restructuring the existing bottom controls layout.
+3. ~~**Move the count display to bottom-right.**~~ **Done.** It's now its own layer on
+   `GameController.root` (a `StackPane`), pinned via `Pos.BOTTOM_RIGHT`, independent of
+   the top bar and bottom controls layout.
 
 4. **Chip-based betting**, replacing the free-text bet field entirely (supersedes
    "Real chip-stack visuals instead of a bet number" below):
