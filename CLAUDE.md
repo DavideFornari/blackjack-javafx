@@ -155,13 +155,90 @@ the implementation against the rules above, not just against itself.
   `GameRules.standard()`, even though every rule is already a constructor parameter.
 - **Windows-only packaging** — `pom.xml` hardcodes the `win` JavaFX classifier.
 
+## Approved next batch (2026-09-14)
+
+Investigated and approved in session with the project owner; supersedes the more
+general bullets below where they overlap (noted inline). Items 1-3 are quick and
+independent; 4-5 are bigger UI work; 6 is the highest-risk item on this whole document;
+7 is a grab-bag to pick from opportunistically. None of this is implemented yet.
+
+1. **Fix: the "Bet:" label is unreadable** (dark grey on dark green — it has no style
+   class, so it falls back to JavaFX's default `Label` color). Fix at the root, not the
+   symptom: add a global `Label { -fx-text-fill: #f0f0f0; }` in `blackjack.css` so this
+   class of bug can't recur as more labels get added. The existing more-specific
+   overrides (`.hand-caption`, `.setup-card Label`, etc.) already take precedence over a
+   bare-element rule, so they keep working unchanged.
+
+2. **Card-counting toggle.** A checkbox on the setup screen, "Show card count" (default
+   off — it's an advantage-play aid, not core to casual play). When off,
+   `shoeInfoLabel` shows only cards-remaining, not the running count.
+
+3. **Move the count display to bottom-right.** Currently in `topBar` alongside the
+   bankroll. `GameController.root` is already a `StackPane`; add the count label as a
+   third layer with `StackPane.setAlignment(..., Pos.BOTTOM_RIGHT)` rather than
+   restructuring the existing bottom controls layout.
+
+4. **Chip-based betting**, replacing the free-text bet field entirely (supersedes
+   "Real chip-stack visuals instead of a bet number" below):
+   - A vertical rail of circular chip buttons on the left: **5 (red) / 10 (blue) / 25
+     (green) / 50 (orange) / 100 (black)** — standard casino colors.
+   - Each click *adds* to the current bet (not sets it) and pushes a matching chip
+     graphic onto a stacked pile rendered on the table (slight vertical offset per chip
+     for a physical-stack look).
+   - A small numeric total badge stays visible on/next to the stack — chips are the
+     primary interaction, but the exact amount is never ambiguous.
+   - A "Clear Bet" button resets it to zero.
+   - Chips whose value would exceed the remaining bankroll are disabled.
+   - `betField`, `betErrorLabel`, the four numeric chip buttons, and the "All In"
+     button in the current `buildControlsArea()` all get replaced by this.
+
+5. **Game settings popup**, exposing what `GameRules` already supports but the UI
+   doesn't (supersedes "Expose `GameRules` on the setup screen" below). A modal dialog
+   reachable before "Sit Down":
+   - Deck count: 1 / 2 / 4 / 6 / 8 — `GameRules.deckCount()`
+   - Dealer soft 17: stand (S17, friendlier) vs. hit (H17, standard casino) —
+     `GameRules.dealerHitsSoftSeventeen()`
+   - Double after split: on/off — `GameRules.doubleAfterSplitAllowed()`
+   - Blackjack payout: 3:2 (standard) vs. 6:5 (worse for the player — worth including
+     so the difference is visible, not just silently defaulting to the better one) —
+     `GameRules.blackjackPayoutRatio()`
+   - Shoe penetration: a percentage slider, 40-80% — `GameRules.penetrationPercent()`
+   - Max split hands: 2-4 — `GameRules.maxSplitHands()`
+   All of these are already constructor parameters on `GameRules` — this is purely a UI
+   task, no engine changes needed.
+
+6. **Visible deck + deal-from-deck animation.** The highest-risk item here —
+   coordinate-math-heavy and genuinely hard to verify without watching it run:
+   - Render a face-down stack (3-5 overlapping `CardView.faceDown()` nodes, small
+     offsets) at a fixed table position representing the shoe.
+   - When a card is dealt, animate a temporary card node via `TranslateTransition` from
+     the deck's screen position to the destination hand slot's position (via
+     `Node.localToScene()` on both ends), then swap in the real `CardView` and remove
+     the temporary node.
+   - Iterate on this one with the user watching the actual window, not from code
+     review alone — animation timing and smoothness aren't verifiable from logs or
+     tests.
+
+7. **Other improvements, pick opportunistically:**
+   - An actual flip animation for the dealer's hole card reveal (`RotateTransition` on
+     the Y-axis, swapping face-down/face-up textures at 90°) instead of the current
+     fade-in.
+   - A win/lose banner animation (brief scale+fade "You Win!" / "Dealer Wins" popup)
+     instead of the plain `messageLabel` text.
+   - Hover/press visual feedback on chips and buttons (scale-up on hover, press-down on
+     click) for tactile feel.
+   - A small recent-rounds history strip (colored dots: green win, red loss, grey
+     push).
+   - Keyboard shortcuts: H = hit, S = stand, D = double, Enter = deal.
+   - Remember the last bet as the next round's default instead of resetting to
+     `DEFAULT_BET`.
+
 ## Roadmap: possible upgrades & features
 
 ### Near-term / low effort
 - [ ] Add the Maven Wrapper (`mvn -N wrapper:wrapper`, once Maven is available) so
       contributors don't need Maven pre-installed — skipped in this pass because a
       hand-authored wrapper script couldn't be verified without running it.
-- [ ] Expose `GameRules` on the setup screen: deck count, H17/S17 toggle, DAS on/off.
 - [ ] Let the player leave the table voluntarily after any settled round, not only when
       bankrupt (the original asked "vuoi giocare ancora?" — do you want to keep
       playing? — after every hand).
@@ -184,7 +261,6 @@ the implementation against the rules above, not just against itself.
       display.
 
 ### Visual / UX polish
-- [ ] Real chip-stack visuals instead of a bet number.
 - [ ] Animate the dealer's draw sequence with a visible pause between cards — currently
       `BlackjackTable.playDealerTurn()` resolves the whole draw sequence instantly and
       only the *reveal* of already-known cards is staggered in the UI.
