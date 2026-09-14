@@ -31,11 +31,11 @@ mvn test          # engine unit tests — no JavaFX runtime needed
 mvn javafx:run     # launches the app
 ```
 
-**Not yet verified end-to-end.** No JDK is installed on the machine this was written
-on, so neither command above has actually been run. Every claim in this file is correct
-by careful manual trace of the code, not by a compiler or test runner. **Run both
-commands as the first task in any new session touching this repo** and fix whatever
-they surface before trusting anything else here.
+**Verified 2026-09-14**: `mvn test` passes 23/23 (0 failures), and `mvn javafx:run`
+launches a working window — confirmed visually by the project owner, not just by log
+output (a `BUILD SUCCESS` from this plugin isn't on its own proof the window rendered,
+since it also exits cleanly if the JavaFX toolkit can't attach to a display). JDK 21,
+Maven, and GitHub CLI were installed via winget/Chocolatey as part of this setup.
 
 ## Architecture
 
@@ -148,8 +148,6 @@ the implementation against the rules above, not just against itself.
 
 ## Known limitations right now
 
-- **Unverified build** — see the warning under Build & run above; this is the actual
-  top priority, ahead of any feature work.
 - **Single seat only.** The original supported multiple players at one terminal table;
   `BlackjackTable` currently assumes exactly one `Player`.
 - **No insurance or surrender** side bets.
@@ -160,8 +158,6 @@ the implementation against the rules above, not just against itself.
 ## Roadmap: possible upgrades & features
 
 ### Near-term / low effort
-- [ ] Install a JDK, run `mvn test` then `mvn javafx:run`, and fix whatever the first
-      real compile turns up.
 - [ ] Add the Maven Wrapper (`mvn -N wrapper:wrapper`, once Maven is available) so
       contributors don't need Maven pre-installed — skipped in this pass because a
       hand-authored wrapper script couldn't be verified without running it.
