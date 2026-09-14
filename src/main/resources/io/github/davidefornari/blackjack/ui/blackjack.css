@@ -1,0 +1,154 @@
+.root {
+    -fx-background-color: #0a2f24;
+    -fx-font-family: "Segoe UI", sans-serif;
+}
+
+.table-layout {
+    -fx-background-color: linear-gradient(to bottom, #0b3d2e, #082a20);
+}
+
+.top-bar {
+    -fx-background-color: rgba(0, 0, 0, 0.28);
+}
+
+.top-bar Label {
+    -fx-text-fill: #f0f0f0;
+    -fx-font-size: 14px;
+}
+
+.message-label {
+    -fx-text-fill: #ffffff;
+    -fx-font-size: 24px;
+    -fx-font-weight: bold;
+}
+
+/* ---- hands ---- */
+
+.hand-pane {
+    -fx-padding: 12;
+    -fx-background-radius: 14;
+}
+
+.hand-active {
+    -fx-background-color: rgba(255, 215, 0, 0.12);
+    -fx-border-color: #ffd700;
+    -fx-border-width: 2;
+    -fx-border-radius: 14;
+    -fx-background-radius: 14;
+}
+
+.hand-caption {
+    -fx-text-fill: #d8d8d8;
+    -fx-font-size: 13px;
+    -fx-font-weight: bold;
+}
+
+.hand-total {
+    -fx-text-fill: #ffd700;
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+}
+
+/* ---- cards ---- */
+
+.card {
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.45), 6, 0.25, 0, 2);
+}
+
+.card-face {
+    -fx-background-color: #fbfbfb;
+    -fx-background-radius: 8;
+    -fx-border-color: #c9c9c9;
+    -fx-border-radius: 8;
+    -fx-border-width: 1;
+}
+
+.card-back {
+    -fx-background-color: linear-gradient(to bottom right, #1e3a8a, #1c2f6b);
+    -fx-background-radius: 8;
+    -fx-border-color: #0f2557;
+    -fx-border-radius: 8;
+    -fx-border-width: 2;
+}
+
+.card-rank {
+    -fx-font-size: 22px;
+    -fx-font-weight: bold;
+}
+
+.card-suit {
+    -fx-font-size: 20px;
+}
+
+.card-red .card-rank, .card-red .card-suit {
+    -fx-text-fill: #c0392b;
+}
+
+.card-black .card-rank, .card-black .card-suit {
+    -fx-text-fill: #1a1a1a;
+}
+
+/* ---- controls ---- */
+
+.controls-area {
+    -fx-background-color: rgba(0, 0, 0, 0.32);
+}
+
+Button {
+    -fx-background-radius: 6;
+    -fx-padding: 8 18;
+    -fx-font-size: 13px;
+    -fx-cursor: hand;
+}
+
+Button:disabled {
+    -fx-opacity: 0.45;
+    -fx-cursor: default;
+}
+
+.primary-button {
+    -fx-background-color: #ffd700;
+    -fx-text-fill: #1a1a1a;
+    -fx-font-weight: bold;
+}
+
+.primary-button:hover:enabled {
+    -fx-background-color: #ffe14d;
+}
+
+.chip-button {
+    -fx-background-radius: 20;
+    -fx-background-color: #2c5f4f;
+    -fx-text-fill: white;
+}
+
+.chip-button:hover:enabled {
+    -fx-background-color: #3a7862;
+}
+
+.error-label {
+    -fx-text-fill: #ff8080;
+    -fx-font-size: 12px;
+}
+
+/* ---- setup overlay ---- */
+
+.setup-overlay {
+    -fx-background-color: rgba(0, 0, 0, 0.78);
+}
+
+.setup-title {
+    -fx-text-fill: #ffd700;
+    -fx-font-size: 34px;
+    -fx-font-weight: bold;
+}
+
+.setup-card {
+    -fx-background-color: #1c1c1c;
+    -fx-background-radius: 14;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.6), 20, 0.3, 0, 4);
+}
+
+.setup-card Label {
+    -fx-text-fill: #dddddd;
+}
