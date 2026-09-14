@@ -3,6 +3,13 @@
     -fx-font-family: "Segoe UI", sans-serif;
 }
 
+/* Default for every plain Label with no more-specific style class (e.g. "Bet:") —
+   otherwise it falls back to JavaFX's dark default text color, unreadable on felt.
+   Class selectors below (hand-caption, setup-card Label, etc.) outrank this and still win. */
+Label {
+    -fx-text-fill: #f0f0f0;
+}
+
 .table-layout {
     -fx-background-color: linear-gradient(to bottom, #0b3d2e, #082a20);
 }
@@ -14,6 +21,14 @@
 .top-bar Label {
     -fx-text-fill: #f0f0f0;
     -fx-font-size: 14px;
+}
+
+.count-badge {
+    -fx-text-fill: #f0f0f0;
+    -fx-font-size: 12px;
+    -fx-background-color: rgba(0, 0, 0, 0.35);
+    -fx-background-radius: 8;
+    -fx-padding: 6 12;
 }
 
 .message-label {
@@ -150,5 +165,10 @@ Button:disabled {
 }
 
 .setup-card Label {
+    -fx-text-fill: #dddddd;
+}
+
+/* CheckBox isn't a Label — its caption needs its own rule, not covered by the ones above. */
+.setup-card .check-box {
     -fx-text-fill: #dddddd;
 }

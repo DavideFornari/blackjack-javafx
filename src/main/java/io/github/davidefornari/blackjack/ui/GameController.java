@@ -18,13 +18,12 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Parent;
 import javafx.scene.control.Button;
+import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
-import javafx.scene.layout.Priority;
-import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.util.Duration;
@@ -74,17 +73,24 @@ public final class GameController {
     private final TextField bankrollField = new TextField(String.valueOf(DEFAULT_BANKROLL));
     private final ComboBox<CountingSystem> countingCombo =
             new ComboBox<>(FXCollections.observableArrayList(CountingSystem.values()));
+    private final CheckBox showCountCheckBox = new CheckBox("Show card count");
     private final Label setupErrorLabel = new Label();
 
     private Phase phase = Phase.SETUP;
     private BlackjackTable table;
     private Player player;
     private Map<Hand, Settlement> lastSettlements = Map.of();
+    private boolean showCardCount;
 
     public GameController() {
         setupOverlay = buildSetupOverlay();
         tableLayout = buildTableLayout();
-        root.getChildren().addAll(tableLayout, setupOverlay);
+
+        shoeInfoLabel.getStyleClass().add("count-badge");
+        StackPane.setAlignment(shoeInfoLabel, Pos.BOTTOM_RIGHT);
+        StackPane.setMargin(shoeInfoLabel, new Insets(0, 16, 16, 0));
+
+        root.getChildren().addAll(tableLayout, shoeInfoLabel, setupOverlay);
         wireActions();
         refresh();
     }
@@ -112,6 +118,7 @@ public final class GameController {
             }
         });
         setupErrorLabel.getStyleClass().add("error-label");
+        showCountCheckBox.setSelected(false);
 
         Button sitDownButton = new Button("Sit Down");
         sitDownButton.getStyleClass().add("primary-button");
@@ -120,7 +127,8 @@ public final class GameController {
         VBox form = new VBox(10,
                 new Label("Player name"), nameField,
                 new Label("Starting bankroll"), bankrollField,
-                new Label("Card-counting display"), countingCombo,
+                new Label("Card-counting system"), countingCombo,
+                showCountCheckBox,
                 setupErrorLabel,
                 sitDownButton);
         form.setAlignment(Pos.CENTER);
@@ -140,7 +148,7 @@ public final class GameController {
         BorderPane layout = new BorderPane();
         layout.getStyleClass().add("table-layout");
 
-        HBox topBar = new HBox(bankrollLabel, spacer(), shoeInfoLabel);
+        HBox topBar = new HBox(bankrollLabel);
         topBar.setPadding(new Insets(12, 18, 12, 18));
         topBar.getStyleClass().add("top-bar");
         layout.setTop(topBar);
@@ -194,12 +202,6 @@ public final class GameController {
         return controls;
     }
 
-    private Region spacer() {
-        Region region = new Region();
-        HBox.setHgrow(region, Priority.ALWAYS);
-        return region;
-    }
-
     private void wireActions() {
         dealButton.setOnAction(e -> onDeal());
         hitButton.setOnAction(e -> onHit());
@@ -225,6 +227,7 @@ public final class GameController {
 
         player = new Player(name, bankroll);
         player.setPreferredCountingSystem(countingCombo.getValue());
+        showCardCount = showCountCheckBox.isSelected();
         GameRules rules = GameRules.standard();
         Shoe shoe = new Shoe(rules.deckCount(), rules.penetrationPercent());
         table = new BlackjackTable(player, shoe, rules);
@@ -322,9 +325,13 @@ public final class GameController {
         }
 
         bankrollLabel.setText(player.name() + " — Bankroll: " + player.bankroll());
-        CountingSystem system = player.preferredCountingSystem();
-        shoeInfoLabel.setText("Shoe: " + table.cardsRemainingInShoe() + " cards left   |   "
-                + system.displayName() + " count: " + formatSigned(table.runningCount(system)));
+        String shoeInfo = "Shoe: " + table.cardsRemainingInShoe() + " cards left";
+        if (showCardCount) {
+            CountingSystem system = player.preferredCountingSystem();
+            shoeInfo += "   |   " + system.displayName() + " count: "
+                    + formatSigned(table.runningCount(system));
+        }
+        shoeInfoLabel.setText(shoeInfo);
 
         renderDealer();
         renderPlayerHands();
