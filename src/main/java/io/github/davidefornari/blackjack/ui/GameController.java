@@ -11,8 +11,11 @@ import io.github.davidefornari.blackjack.engine.RoundOutcome;
 import io.github.davidefornari.blackjack.engine.Settlement;
 import io.github.davidefornari.blackjack.engine.Shoe;
 import javafx.animation.FadeTransition;
+import javafx.animation.ParallelTransition;
 import javafx.animation.PauseTransition;
+import javafx.animation.ScaleTransition;
 import javafx.animation.SequentialTransition;
+import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -22,15 +25,19 @@ import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextField;
+import javafx.scene.image.ImageView;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
+import javafx.stage.Stage;
 import javafx.util.Duration;
 import javafx.util.StringConverter;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -45,7 +52,7 @@ public final class GameController {
     private enum Phase { SETUP, BETTING, PLAYER_TURN, ROUND_OVER, GAME_OVER }
 
     private static final long DEFAULT_BANKROLL = 1000;
-    private static final long DEFAULT_BET = 50;
+    private static final long[] CHIP_DENOMINATIONS = {5, 10, 25, 50, 100};
 
     private final StackPane root = new StackPane();
     private final VBox setupOverlay;
@@ -57,7 +64,16 @@ public final class GameController {
     private final Label bankrollLabel = new Label();
     private final Label shoeInfoLabel = new Label();
 
-    private final TextField betField = new TextField(String.valueOf(DEFAULT_BET));
+    private final Label bannerTitleLabel = new Label();
+    private final Label bannerAmountLabel = new Label();
+    private final VBox winLoseBanner = new VBox(4, bannerTitleLabel, bannerAmountLabel);
+    private SequentialTransition bannerAnimation;
+
+    private final List<Long> placedChips = new ArrayList<>();
+    private final Map<Long, Button> chipButtonsByDenomination = new LinkedHashMap<>();
+    private final StackPane betStackPane = new StackPane();
+    private final Label betTotalLabel = new Label();
+    private final Button clearBetButton = new Button("Clear Bet");
     private final Label betErrorLabel = new Label();
     private final Button dealButton = new Button("Deal");
 
@@ -81,6 +97,7 @@ public final class GameController {
     private Player player;
     private Map<Hand, Settlement> lastSettlements = Map.of();
     private boolean showCardCount;
+    private Stage stage;
 
     public GameController() {
         setupOverlay = buildSetupOverlay();
@@ -90,13 +107,54 @@ public final class GameController {
         StackPane.setAlignment(shoeInfoLabel, Pos.BOTTOM_RIGHT);
         StackPane.setMargin(shoeInfoLabel, new Insets(0, 16, 16, 0));
 
-        root.getChildren().addAll(tableLayout, shoeInfoLabel, setupOverlay);
+        winLoseBanner.getStyleClass().add("win-lose-banner");
+        bannerTitleLabel.getStyleClass().add("win-lose-banner-title");
+        bannerAmountLabel.getStyleClass().add("win-lose-banner-amount");
+        winLoseBanner.setAlignment(Pos.CENTER);
+        // Spans the full table width like a ribbon, but must not stretch to the StackPane's
+        // full height too (Region's default max height is Double.MAX_VALUE) — clamp it to its
+        // own content height so it reads as a horizontal band, not a full-screen overlay.
+        winLoseBanner.setMaxHeight(Region.USE_PREF_SIZE);
+        winLoseBanner.setMouseTransparent(true);
+        winLoseBanner.setVisible(false);
+        winLoseBanner.setOpacity(0);
+
+        root.getChildren().addAll(tableLayout, shoeInfoLabel, winLoseBanner, setupOverlay);
         wireActions();
         refresh();
     }
 
     public Parent getRoot() {
         return root;
+    }
+
+    /**
+     * Lets the window grow to fit content added after launch (dealt cards, wager chip
+     * stacks, extra hands from a split) instead of leaving them cropped behind a fixed
+     * size that inevitably goes stale as the table UI grows. Deliberately grow-only —
+     * see {@link #growToFitContent()} — so the window never jumps smaller mid-round.
+     */
+    public void attachStage(Stage stage) {
+        this.stage = stage;
+    }
+
+    /** Grows (never shrinks) the window to fit the current layout, once it's actually measured. */
+    private void growToFitContent() {
+        if (stage == null) {
+            return;
+        }
+        Platform.runLater(() -> {
+            root.applyCss();
+            root.layout();
+            double neededWidth = root.prefWidth(-1);
+            double neededHeight = root.prefHeight(-1);
+            if (stage.getWidth() < neededWidth) {
+                stage.setWidth(neededWidth);
+            }
+            if (stage.getHeight() < neededHeight) {
+                stage.setHeight(neededHeight);
+            }
+        });
     }
 
     // ------------------------------------------------------------------
@@ -148,11 +206,6 @@ public final class GameController {
         BorderPane layout = new BorderPane();
         layout.getStyleClass().add("table-layout");
 
-        HBox topBar = new HBox(bankrollLabel);
-        topBar.setPadding(new Insets(12, 18, 12, 18));
-        topBar.getStyleClass().add("top-bar");
-        layout.setTop(topBar);
-
         messageLabel.getStyleClass().add("message-label");
         playerHandsBox.setAlignment(Pos.CENTER);
 
@@ -165,26 +218,47 @@ public final class GameController {
         return layout;
     }
 
-    private VBox buildControlsArea() {
-        betErrorLabel.getStyleClass().add("error-label");
+    private HBox buildChipRow() {
+        HBox row = new HBox(10);
+        row.getStyleClass().add("chip-rail");
+        row.setAlignment(Pos.CENTER);
+        double size = ChipView.DIAMETER + 10;
+        for (long denomination : CHIP_DENOMINATIONS) {
+            ImageView icon = new ImageView(ChipView.imageFor(denomination));
+            icon.setFitWidth(size);
+            icon.setFitHeight(size);
+            icon.setPreserveRatio(true);
+            icon.setSmooth(true);
 
-        HBox chips = new HBox(8);
-        for (long amount : new long[]{25, 50, 100, 250}) {
-            Button chip = new Button(String.valueOf(amount));
-            chip.getStyleClass().add("chip-button");
-            chip.setOnAction(e -> betField.setText(String.valueOf(Math.min(amount, player.bankroll()))));
-            chips.getChildren().add(chip);
+            Button chip = new Button();
+            chip.setGraphic(icon);
+            chip.getStyleClass().add("chip-button-round");
+            chip.setPrefSize(size, size);
+            chip.setMinSize(size, size);
+            chip.setMaxSize(size, size);
+            chip.setOnAction(e -> addChip(denomination));
+            chipButtonsByDenomination.put(denomination, chip);
+            row.getChildren().add(chip);
         }
-        Button allIn = new Button("All In");
-        allIn.getStyleClass().add("chip-button");
-        allIn.setOnAction(e -> betField.setText(String.valueOf(player.bankroll())));
-        chips.getChildren().add(allIn);
+        return row;
+    }
+
+    private VBox buildControlsArea() {
+        HBox statusBar = new HBox(bankrollLabel);
+        statusBar.setAlignment(Pos.CENTER);
+        statusBar.getStyleClass().add("status-bar");
+
+        betErrorLabel.getStyleClass().add("error-label");
+        betTotalLabel.getStyleClass().add("bet-total-badge");
+        clearBetButton.setOnAction(e -> onClearBet());
+
+        betStackPane.setMinWidth(ChipView.DIAMETER + 20);
 
         dealButton.getStyleClass().add("primary-button");
-        HBox betRow = new HBox(10, new Label("Bet:"), betField, dealButton);
+        HBox betRow = new HBox(16, betStackPane, betTotalLabel, clearBetButton, dealButton);
         betRow.setAlignment(Pos.CENTER);
 
-        VBox bettingBox = new VBox(8, chips, betRow, betErrorLabel);
+        VBox bettingBox = new VBox(10, buildChipRow(), betRow, betErrorLabel);
         bettingBox.setAlignment(Pos.CENTER);
 
         HBox actionRow = new HBox(10, hitButton, standButton, doubleButton, splitButton);
@@ -192,10 +266,15 @@ public final class GameController {
 
         nextRoundButton.getStyleClass().add("primary-button");
         newGameButton.getStyleClass().add("primary-button");
+        // Buttons default to visible in JavaFX, and refresh() can't set their real state until
+        // a table/player exist — without this they'd flash visible during SETUP, relying purely
+        // on the overlay happening to cover them instead of actually being hidden.
+        nextRoundButton.setVisible(false);
+        newGameButton.setVisible(false);
         HBox afterRoundRow = new HBox(10, nextRoundButton, newGameButton);
         afterRoundRow.setAlignment(Pos.CENTER);
 
-        VBox controls = new VBox(14, bettingBox, actionRow, afterRoundRow);
+        VBox controls = new VBox(14, statusBar, bettingBox, actionRow, afterRoundRow);
         controls.setAlignment(Pos.CENTER);
         controls.setPadding(new Insets(14, 18, 22, 18));
         controls.getStyleClass().add("controls-area");
@@ -238,13 +317,9 @@ public final class GameController {
     }
 
     private void onDeal() {
-        Long bet = parsePositiveLong(betField.getText());
-        if (bet == null) {
-            betErrorLabel.setText("Enter a bet greater than zero.");
-            return;
-        }
-        if (bet > player.bankroll()) {
-            betErrorLabel.setText("You only have " + player.bankroll() + " to bet.");
+        long bet = currentBetTotal();
+        if (bet <= 0) {
+            betErrorLabel.setText("Place a bet first — click a chip.");
             return;
         }
         betErrorLabel.setText("");
@@ -255,6 +330,28 @@ public final class GameController {
             phase = Phase.PLAYER_TURN;
         }
         refresh();
+    }
+
+    /** Adds a chip to the current bet, ignored if it would exceed the bankroll (the button should already be disabled in that case). */
+    private void addChip(long denomination) {
+        if (currentBetTotal() + denomination > player.bankroll()) {
+            return;
+        }
+        placedChips.add(denomination);
+        refresh();
+    }
+
+    private void onClearBet() {
+        placedChips.clear();
+        refresh();
+    }
+
+    private long currentBetTotal() {
+        long total = 0;
+        for (long chip : placedChips) {
+            total += chip;
+        }
+        return total;
     }
 
     private void onHit() {
@@ -289,16 +386,59 @@ public final class GameController {
         table.playDealerTurn();
         List<Settlement> settlements = table.settle();
         Map<Hand, Settlement> byHand = new HashMap<>();
+        long totalProfit = 0;
         for (Settlement s : settlements) {
             byHand.put(s.hand(), s);
+            totalProfit += s.payout() - s.hand().wager();
         }
         lastSettlements = byHand;
         phase = player.isBankrupt() ? Phase.GAME_OVER : Phase.ROUND_OVER;
+        showRoundOutcomeBanner(totalProfit);
+    }
+
+    /** Pops up a brief scale+fade "WIN +N" / "LOST -N" banner over the table; a push (net zero across every hand) shows nothing since it's neither. */
+    private void showRoundOutcomeBanner(long totalProfit) {
+        if (totalProfit == 0) {
+            return;
+        }
+        boolean win = totalProfit > 0;
+        bannerTitleLabel.setText(win ? "WIN" : "LOST");
+        bannerAmountLabel.setText((win ? "+" : "-") + Math.abs(totalProfit));
+        winLoseBanner.getStyleClass().removeAll("win-lose-banner-win", "win-lose-banner-lose");
+        winLoseBanner.getStyleClass().add(win ? "win-lose-banner-win" : "win-lose-banner-lose");
+
+        if (bannerAnimation != null) {
+            bannerAnimation.stop();
+        }
+        winLoseBanner.setOpacity(0);
+        winLoseBanner.setScaleX(0.6);
+        winLoseBanner.setScaleY(0.6);
+        winLoseBanner.setVisible(true);
+
+        FadeTransition fadeIn = new FadeTransition(Duration.millis(220), winLoseBanner);
+        fadeIn.setFromValue(0);
+        fadeIn.setToValue(1);
+        ScaleTransition scaleIn = new ScaleTransition(Duration.millis(220), winLoseBanner);
+        scaleIn.setFromX(0.6);
+        scaleIn.setFromY(0.6);
+        scaleIn.setToX(1.0);
+        scaleIn.setToY(1.0);
+        ParallelTransition popIn = new ParallelTransition(fadeIn, scaleIn);
+
+        PauseTransition hold = new PauseTransition(Duration.millis(1100));
+
+        FadeTransition fadeOut = new FadeTransition(Duration.millis(320), winLoseBanner);
+        fadeOut.setFromValue(1);
+        fadeOut.setToValue(0);
+        fadeOut.setOnFinished(e -> winLoseBanner.setVisible(false));
+
+        bannerAnimation = new SequentialTransition(popIn, hold, fadeOut);
+        bannerAnimation.play();
     }
 
     private void onNextRound() {
         lastSettlements = Map.of();
-        betField.setText(String.valueOf(Math.min(DEFAULT_BET, player.bankroll())));
+        placedChips.clear();
         phase = Phase.BETTING;
         refresh();
     }
@@ -308,6 +448,7 @@ public final class GameController {
         table = null;
         player = null;
         lastSettlements = Map.of();
+        placedChips.clear();
         refresh();
     }
 
@@ -335,6 +476,7 @@ public final class GameController {
 
         renderDealer();
         renderPlayerHands();
+        renderBetStack();
         renderMessage();
 
         boolean betting = phase == Phase.BETTING;
@@ -342,9 +484,20 @@ public final class GameController {
         boolean roundOver = phase == Phase.ROUND_OVER;
         boolean gameOver = phase == Phase.GAME_OVER;
 
-        betField.setDisable(!betting);
-        dealButton.setDisable(!betting);
+        long betTotal = currentBetTotal();
+        for (long denomination : CHIP_DENOMINATIONS) {
+            boolean wouldExceedBankroll = betTotal + denomination > player.bankroll();
+            chipButtonsByDenomination.get(denomination).setDisable(!betting || wouldExceedBankroll);
+        }
+        clearBetButton.setDisable(!betting || placedChips.isEmpty());
+        dealButton.setDisable(!betting || betTotal <= 0);
         betErrorLabel.setVisible(betting);
+        // Once dealt, each hand shows its own chip stack right under its cards — the pre-deal
+        // pile in the controls area would just be a confusing, stale duplicate of that.
+        betStackPane.setVisible(betting);
+        betStackPane.setManaged(betting);
+        betTotalLabel.setVisible(betting);
+        betTotalLabel.setManaged(betting);
 
         hitButton.setDisable(!playerTurn);
         standButton.setDisable(!playerTurn);
@@ -355,6 +508,8 @@ public final class GameController {
         nextRoundButton.setVisible(roundOver);
         newGameButton.setVisible(roundOver || gameOver);
         newGameButton.setDisable(!(roundOver || gameOver));
+
+        growToFitContent();
     }
 
     private void renderDealer() {
@@ -390,11 +545,17 @@ public final class GameController {
                 views.add(CardView.faceUp(card));
             }
             pane.setCards(views);
+            pane.setWager(hand.wager());
             pane.setTotalText(handStatusText(hand));
             pane.setActive(phase == Phase.PLAYER_TURN && i == table.activeHandIndex());
             playerHandsBox.getChildren().add(pane);
             animateIn(views);
         }
+    }
+
+    private void renderBetStack() {
+        betStackPane.getChildren().setAll(ChipView.stack(currentBetTotal()));
+        betTotalLabel.setText("Bet: " + currentBetTotal());
     }
 
     private String handStatusText(Hand hand) {

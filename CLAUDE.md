@@ -37,6 +37,12 @@ output (a `BUILD SUCCESS` from this plugin isn't on its own proof the window ren
 since it also exits cleanly if the JavaFX toolkit can't attach to a display). JDK 21,
 Maven, and GitHub CLI were installed via winget/Chocolatey as part of this setup.
 
+**Verified again 2026-09-16**, after the chip-image/wager-stack/banner/window-sizing
+work below: still 23/23, and the running window (chip stacks, split, double, the
+win/lose banner, and the window auto-fit through several launches) was confirmed
+visually by the project owner across multiple rounds of feedback, not just by a
+successful compile.
+
 ## Architecture
 
 ```
@@ -159,9 +165,11 @@ the implementation against the rules above, not just against itself.
 
 Investigated and approved in session with the project owner; supersedes the more
 general bullets below where they overlap (noted inline). Items 1-3 are quick and
-independent — **done and visually confirmed 2026-09-14**; 4-5 are bigger UI work; 6 is
-the highest-risk item on this whole document; 7 is a grab-bag to pick from
-opportunistically.
+independent — **done and visually confirmed 2026-09-14**; **4 is done and visually
+confirmed 2026-09-16**, though it evolved past its original spec through several rounds
+of feedback (see the item itself); 5 is still open; 6 is the highest-risk item on this
+whole document; 7 is a grab-bag to pick from opportunistically (one item done
+2026-09-16, see below).
 
 1. ~~**Fix: the "Bet:" label is unreadable**~~ **Done.** Added a global
    `Label { -fx-text-fill: #f0f0f0; }` in `blackjack.css` rather than patching just that
@@ -178,19 +186,30 @@ opportunistically.
    `GameController.root` (a `StackPane`), pinned via `Pos.BOTTOM_RIGHT`, independent of
    the top bar and bottom controls layout.
 
-4. **Chip-based betting**, replacing the free-text bet field entirely (supersedes
-   "Real chip-stack visuals instead of a bet number" below):
-   - A vertical rail of circular chip buttons on the left: **5 (red) / 10 (blue) / 25
-     (green) / 50 (orange) / 100 (black)** — standard casino colors.
-   - Each click *adds* to the current bet (not sets it) and pushes a matching chip
-     graphic onto a stacked pile rendered on the table (slight vertical offset per chip
-     for a physical-stack look).
-   - A small numeric total badge stays visible on/next to the stack — chips are the
-     primary interaction, but the exact amount is never ambiguous.
-   - A "Clear Bet" button resets it to zero.
-   - Chips whose value would exceed the remaining bankroll are disabled.
-   - `betField`, `betErrorLabel`, the four numeric chip buttons, and the "All In"
-     button in the current `buildControlsArea()` all get replaced by this.
+4. ~~**Chip-based betting**~~ **Done, evolved past the original plan below through
+   several rounds of hands-on feedback (2026-09-15/16):**
+   - Chips are real photos (`ChipView`), cropped from `docs/chip-reference.png` (kept in
+     the repo for provenance) via a one-off Pillow script that wasn't checked in — the
+     cropped, transparent-background PNGs under `chips/` are the actual build artifact,
+     not CSS-drawn circles as originally sketched.
+   - Denominations map to **white=5 / red=10 / blue=25 / green=50 / black=100** —
+     shifted one color down from the original red/blue/green/orange/black plan because
+     the reference sheet has no orange chip.
+   - Layout is a **horizontal row** above the bet controls, not the originally-planned
+     vertical rail — changed on request so chips sit closer to the felt.
+   - Every hand gets its **own chip stack rendered right under its cards**
+     (`HandPane.setWager()`), not just one pile in the controls area. This falls out of
+     the engine for free: `Hand.wager()` already doubles on `doubleDown()` and copies to
+     both new hands on `split()`, so the per-hand stack updates correctly with no extra
+     bookkeeping — no `Map<Hand, List<Long>>` tracking was needed.
+   - Every stack (the pre-deal pile and every per-hand one) renders via
+     `ChipView.stack(amount)`: a greedy breakdown into the **fewest chips**, **biggest
+     denomination at the bottom** — it does not preserve the literal sequence of chips
+     clicked (e.g. 5+10+5+25 renders as 25+10+10).
+   - `betField`/`betErrorLabel`/the four numeric chip buttons/"All In" are gone, replaced
+     by the chip row + `betStackPane`, matching the original plan. The pre-deal
+     `betStackPane` hides itself (`setVisible`/`setManaged`) once a hand exists, so the
+     bet total is never shown twice.
 
 5. **Game settings popup**, exposing what `GameRules` already supports but the UI
    doesn't (supersedes "Expose `GameRules` on the setup screen" below). A modal dialog
@@ -223,8 +242,16 @@ opportunistically.
    - An actual flip animation for the dealer's hole card reveal (`RotateTransition` on
      the Y-axis, swapping face-down/face-up textures at 90°) instead of the current
      fade-in.
-   - A win/lose banner animation (brief scale+fade "You Win!" / "Dealer Wins" popup)
-     instead of the plain `messageLabel` text.
+   - ~~A win/lose banner animation~~ **Done (2026-09-16), as a horizontal band, not a
+     popup.** `GameController.showRoundOutcomeBanner()` pops a scale+fade "WIN +N" /
+     "LOST -N" ribbon (`winLoseBanner`) spanning the table width, centered vertically,
+     driven by the round's total profit summed across every hand's `Settlement`
+     (handles split rounds correctly). A push (net zero) shows nothing. **Gotcha hit
+     while building this:** `Region`'s default max size is `Double.MAX_VALUE`, so an
+     unconstrained `VBox` dropped into a `StackPane` stretches to fill it completely —
+     the first version covered the whole window. Fixed by
+     `winLoseBanner.setMaxHeight(Region.USE_PREF_SIZE)`; remember this for any future
+     overlay added to `root`.
    - Hover/press visual feedback on chips and buttons (scale-up on hover, press-down on
      click) for tactile feel.
    - A small recent-rounds history strip (colored dots: green win, red loss, grey
@@ -288,3 +315,21 @@ opportunistically.
 - `Shoe`'s package-private `Shoe(List<Card>)` constructor exists purely as a
   deterministic-testing seam. Don't make it public; production code should only ever
   use `new Shoe(deckCount, penetrationPercent)`.
+- The player name/bankroll status line moved from a top bar to a `.status-bar` inside
+  `buildControlsArea()` (bottom of the window) on request (2026-09-16) — there is no
+  more `layout.setTop(...)` in `buildTableLayout()`. Don't reintroduce a top bar without
+  checking that's actually wanted; it was a deliberate move, not an oversight.
+- **The window has no fixed size** — `BlackjackApp` creates `new Scene(controller.getRoot())`
+  with no width/height, and `GameController.growToFitContent()` (called at the end of
+  every `refresh()`) grows the stage — *never shrinks it* — to fit whatever is on screen
+  right now: dealt cards, wager stacks, extra hands from a split. This replaced a fixed
+  1040x720 `Scene` that started cropping content once the chip row, status bar, and
+  per-hand wager stacks were added — a hardcoded size will go stale again the next time
+  the table UI grows, so don't reintroduce one. Call `attachStage()` before relying on
+  this if `GameController` is ever constructed somewhere other than `BlackjackApp`.
+  **Gotcha hit while building this:** don't call `Stage.sizeToScene()` *before*
+  `Stage.show()` when `minWidth`/`minHeight` are also set — it computes layout at the
+  pre-clamp size, then the min-size constraint silently enlarges the window without
+  re-laying-out root, leaving content pinned top-left in a mostly-blank window. Call
+  `show()` first (its own auto-sizing already accounts for the min constraints), then
+  `centerOnScreen()` if needed.

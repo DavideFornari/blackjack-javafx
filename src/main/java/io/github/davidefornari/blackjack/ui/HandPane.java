@@ -3,6 +3,7 @@ package io.github.davidefornari.blackjack.ui;
 import javafx.geometry.Pos;
 import javafx.scene.control.Label;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 
 import java.util.List;
@@ -12,6 +13,7 @@ public final class HandPane extends VBox {
 
     private final HBox cardsRow = new HBox(-32);
     private final Label captionLabel = new Label();
+    private final StackPane wagerStack = new StackPane();
     private final Label totalLabel = new Label();
 
     public HandPane() {
@@ -19,9 +21,11 @@ public final class HandPane extends VBox {
         setSpacing(6);
         cardsRow.setAlignment(Pos.CENTER);
         captionLabel.getStyleClass().add("hand-caption");
+        wagerStack.getStyleClass().add("hand-wager-stack");
+        wagerStack.setAlignment(Pos.CENTER);
         totalLabel.getStyleClass().add("hand-total");
         getStyleClass().add("hand-pane");
-        getChildren().addAll(captionLabel, cardsRow, totalLabel);
+        getChildren().addAll(captionLabel, cardsRow, wagerStack, totalLabel);
     }
 
     public void setCaption(String text) {
@@ -34,6 +38,11 @@ public final class HandPane extends VBox {
 
     public void setCards(List<CardView> cards) {
         cardsRow.getChildren().setAll(cards);
+    }
+
+    /** Shows a chip stack representing this hand's wager, right under its cards — empty (no stack) when {@code amount} is zero, such as for the dealer. */
+    public void setWager(long amount) {
+        wagerStack.getChildren().setAll(ChipView.stack(amount));
     }
 
     public void setActive(boolean active) {

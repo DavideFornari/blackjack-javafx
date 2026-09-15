@@ -14,11 +14,13 @@ Label {
     -fx-background-color: linear-gradient(to bottom, #0b3d2e, #082a20);
 }
 
-.top-bar {
+.status-bar {
     -fx-background-color: rgba(0, 0, 0, 0.28);
+    -fx-background-radius: 10;
+    -fx-padding: 8 16;
 }
 
-.top-bar Label {
+.status-bar Label {
     -fx-text-fill: #f0f0f0;
     -fx-font-size: 14px;
 }
@@ -35,6 +37,34 @@ Label {
     -fx-text-fill: #ffffff;
     -fx-font-size: 24px;
     -fx-font-weight: bold;
+}
+
+/* ---- round-outcome banner ---- */
+
+.win-lose-banner {
+    -fx-padding: 18 0;
+    -fx-background-color: rgba(0, 0, 0, 0.6);
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.6), 20, 0.3, 0, 0);
+}
+
+.win-lose-banner-title {
+    -fx-font-size: 42px;
+    -fx-font-weight: bold;
+}
+
+.win-lose-banner-amount {
+    -fx-font-size: 26px;
+    -fx-font-weight: bold;
+}
+
+.win-lose-banner-win .win-lose-banner-title,
+.win-lose-banner-win .win-lose-banner-amount {
+    -fx-text-fill: #2ecc71;
+}
+
+.win-lose-banner-lose .win-lose-banner-title,
+.win-lose-banner-lose .win-lose-banner-amount {
+    -fx-text-fill: #e74c3c;
 }
 
 /* ---- hands ---- */
@@ -131,14 +161,33 @@ Button:disabled {
     -fx-background-color: #ffe14d;
 }
 
-.chip-button {
-    -fx-background-radius: 20;
-    -fx-background-color: #2c5f4f;
-    -fx-text-fill: white;
+/* ---- chips ---- */
+
+.chip-rail {
+    -fx-background-color: rgba(0, 0, 0, 0.25);
+    -fx-padding: 12 10;
 }
 
-.chip-button:hover:enabled {
-    -fx-background-color: #3a7862;
+/* Chip color/shape/edge detail now comes from the real chip photos themselves
+   (ChipView, chips/*.png) — these rules just add depth and a click affordance. */
+.chip {
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.55), 4, 0.25, 0, 2);
+}
+
+.chip-button-round {
+    -fx-background-color: transparent;
+    -fx-background-radius: 100;
+    -fx-padding: 0;
+}
+
+.chip-button-round:hover:enabled {
+    -fx-effect: dropshadow(gaussian, rgba(255, 215, 0, 0.7), 12, 0.5, 0, 0);
+}
+
+.bet-total-badge {
+    -fx-text-fill: #ffd700;
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
 }
 
 .error-label {
