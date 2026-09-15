@@ -217,8 +217,10 @@ Button:disabled {
     -fx-text-fill: #dddddd;
 }
 
-/* CheckBox isn't a Label — its caption needs its own rule, not covered by the ones above. */
-.setup-card .check-box {
+/* CheckBox/RadioButton aren't Labels — their captions need their own rule, not covered
+   by the one above (bit us once already for CheckBox; RadioButton has the same gap). */
+.setup-card .check-box,
+.setup-card .radio-button {
     -fx-text-fill: #dddddd;
 }
 
@@ -229,13 +231,4 @@ Button:disabled {
     -fx-font-style: italic;
     -fx-text-fill: #999999;
     -fx-text-alignment: center;
-}
-
-/* ---- game settings dialog ---- */
-/* Background and field labels stay default — only a small brightness bump on the
-   RadioButton/CheckBox caption text, for a bit more contrast. */
-
-.game-settings-dialog .radio-button,
-.game-settings-dialog .check-box {
-    -fx-text-fill: #6e6e6e;
 }

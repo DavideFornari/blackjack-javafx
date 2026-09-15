@@ -228,16 +228,15 @@ document, still open; 7 is a grab-bag to pick from opportunistically (one item d
    UI task, no engine changes. The chosen rules are held in a new `pendingRules` field
    and only take effect on the next "Sit Down" (`onSitDown()` now uses `pendingRules`
    instead of `GameRules.standard()`).
-   **Dialog styling took several rounds of back-and-forth** — worth recording exactly
-   where it landed so it isn't re-litigated: the `Dialog`'s own default background is
-   left completely alone (multiple attempts to override it — a light-gray background
-   with dark text, and a light-text-on-the-default-background variant — were both
-   explicitly rejected). The *only* override is on the RadioButton/CheckBox caption
-   text-fill (`.game-settings-dialog .radio-button, .check-box` in `blackjack.css`,
-   currently `#6e6e6e`), because the default caption color wasn't readable against
-   the dialog's default background. If contrast comes up again, adjust only that one
-   color value — don't reach for a background-color override again, that's the one
-   thing that was tried and explicitly turned down.
+   **Update (2026-09-16, same day): the `Dialog<GameRules>` described above is gone.**
+   It took several rounds of contrast-fix back-and-forth (a light-gray background with
+   dark text, then a text-only-brightness tweak against the default background — see git
+   history on `settings-panel-in-theme-style` if the details ever matter) before landing
+   on the real fix: replace the `Dialog` entirely with an in-theme `VBox` overlay, same
+   as `buildConfirmNewGameOverlay()`. `openGameSettingsDialog()` no longer exists —
+   `buildGameSettingsOverlay()` / `showGameSettingsOverlay()` / `applyGameSettings()` /
+   `hideGameSettingsOverlay()` do the same job. See the design-standard note under
+   "Notes for the next session working here".
 
 6. **Visible deck + deal-from-deck animation.** The highest-risk item here —
    coordinate-math-heavy and genuinely hard to verify without watching it run:
@@ -359,16 +358,18 @@ document, still open; 7 is a grab-bag to pick from opportunistically (one item d
   `show()` first (its own auto-sizing already accounts for the min constraints), then
   `centerOnScreen()` if needed.
 - **Design standard set 2026-09-16: prefer a custom in-theme overlay over
-  `javafx.scene.control.Dialog`/`Alert` for anything user-facing.** Two separate popups
-  were built with stock JavaFX dialogs this session and both had default-theming
-  problems — the Game Settings dialog needed a RadioButton/CheckBox text-color override
-  to be readable (see item 5 above), and the first "New Game" confirmation (built with
+  `javafx.scene.control.Dialog`/`Alert` for anything user-facing.** Both popups this
+  project has needed so far were first built with stock JavaFX dialogs and both had
+  default-theming problems — the Game Settings dialog needed a RadioButton/CheckBox
+  text-color override to be readable, and the "New Game" confirmation (built with
   `Alert`) was rejected outright for near-invisible header text, a generic system-dialog
   look that broke the felt-table visual identity, and locale-dependent button captions
-  (`ButtonType.YES`/`CANCEL` render in the OS locale, not English). The confirmation was
-  rebuilt as a plain `VBox` reusing `setup-overlay`/`setup-card` (see
-  `buildConfirmNewGameOverlay()`) — full control over text, color, and language, and it
-  actually looks like part of this app. **Next planned step: restyle the Game Settings
-  dialog the same way**, on its own branch — replace `openGameSettingsDialog()`'s
-  `Dialog<GameRules>` with an in-theme overlay following this same pattern, carrying over
-  its exact field set (deck count, S17/H17, DAS, payout, penetration, max splits).
+  (`ButtonType.YES`/`CANCEL` render in the OS locale, not English). **Both are now plain
+  `VBox`es reusing `setup-overlay`/`setup-card`** — `buildConfirmNewGameOverlay()` and
+  `buildGameSettingsOverlay()` — giving full control over text, color, and language, and
+  they actually look like part of this app. Follow this same pattern for any future
+  modal: a `VBox` styled with `setup-overlay`/`setup-card`, added to `root`'s children,
+  toggled via `setVisible`/`setManaged`, not a `Dialog`/`Alert`. One gotcha this
+  surfaced: RadioButton captions, like CheckBox, aren't `Label` nodes and need their own
+  `.setup-card .radio-button` rule — the same class of gap CLAUDE.md already flagged for
+  CheckBox, now fixed for both together.

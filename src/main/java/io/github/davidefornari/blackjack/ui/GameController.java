@@ -21,10 +21,8 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Parent;
 import javafx.scene.control.Button;
-import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
-import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.RadioButton;
 import javafx.scene.control.Slider;
@@ -64,6 +62,7 @@ public final class GameController {
     private final StackPane root = new StackPane();
     private final VBox setupOverlay;
     private final VBox confirmNewGameOverlay;
+    private final VBox gameSettingsOverlay;
     private final BorderPane tableLayout;
 
     private final HandPane dealerPane = new HandPane();
@@ -101,6 +100,18 @@ public final class GameController {
     private final Label setupErrorLabel = new Label();
     private final Label rulesSummaryLabel = new Label();
 
+    private final ComboBox<Integer> deckCombo =
+            new ComboBox<>(FXCollections.observableArrayList(1, 2, 4, 6, 8));
+    private final RadioButton standRadio = new RadioButton("Stand (S17, friendlier)");
+    private final RadioButton hitRadio = new RadioButton("Hit (H17, standard casino)");
+    private final CheckBox doubleAfterSplitCheck = new CheckBox("Allowed");
+    private final RadioButton payout32Radio = new RadioButton("3:2 (standard)");
+    private final RadioButton payout65Radio = new RadioButton("6:5 (worse for the player)");
+    private final Slider penetrationSlider = new Slider(40, 80, GameRules.standard().penetrationPercent());
+    private final Label penetrationValueLabel = new Label();
+    private final ComboBox<Integer> maxSplitCombo =
+            new ComboBox<>(FXCollections.observableArrayList(2, 3, 4));
+
     private Phase phase = Phase.SETUP;
     private BlackjackTable table;
     private Player player;
@@ -112,6 +123,7 @@ public final class GameController {
     public GameController() {
         setupOverlay = buildSetupOverlay();
         confirmNewGameOverlay = buildConfirmNewGameOverlay();
+        gameSettingsOverlay = buildGameSettingsOverlay();
         tableLayout = buildTableLayout();
 
         shoeInfoLabel.getStyleClass().add("count-badge");
@@ -130,7 +142,10 @@ public final class GameController {
         winLoseBanner.setVisible(false);
         winLoseBanner.setOpacity(0);
 
-        root.getChildren().addAll(tableLayout, shoeInfoLabel, winLoseBanner, confirmNewGameOverlay, setupOverlay);
+        // gameSettingsOverlay is opened from a button inside setupOverlay, so it must come
+        // after it here to actually render on top of it.
+        root.getChildren().addAll(
+                tableLayout, shoeInfoLabel, winLoseBanner, confirmNewGameOverlay, setupOverlay, gameSettingsOverlay);
         wireActions();
         refresh();
     }
@@ -194,7 +209,7 @@ public final class GameController {
         rulesSummaryLabel.setText(describeRules(pendingRules));
 
         Button gameSettingsButton = new Button("Game Settings");
-        gameSettingsButton.setOnAction(e -> openGameSettingsDialog());
+        gameSettingsButton.setOnAction(e -> showGameSettingsOverlay());
 
         Button sitDownButton = new Button("Sit Down");
         sitDownButton.getStyleClass().add("primary-button");
@@ -272,57 +287,36 @@ public final class GameController {
     }
 
     /**
-     * Every field here is already a {@link GameRules} constructor parameter — this dialog
-     * is purely UI, no engine changes. The dialog's own default background and field labels
-     * are left alone; only the RadioButton/CheckBox caption text gets a small brightness bump
-     * via {@code .game-settings-dialog} in {@code blackjack.css}, on request, for a bit more
-     * contrast against that background.
+     * Every field here is already a {@link GameRules} constructor parameter — this overlay
+     * is purely UI, no engine changes. In-theme (reuses {@code setup-overlay}/{@code setup-card},
+     * same as {@link #buildConfirmNewGameOverlay()}) rather than a
+     * {@link javafx.scene.control.Dialog}: a first attempt at this exact panel used
+     * {@code Dialog<GameRules>} and needed a caption-color
+     * override to be readable — this version sidesteps that entirely by using our own CSS.
      */
-    private void openGameSettingsDialog() {
-        Dialog<GameRules> dialog = new Dialog<>();
-        dialog.setTitle("Game Settings");
-        dialog.initOwner(stage);
-        dialog.getDialogPane().getStyleClass().add("game-settings-dialog");
-        dialog.getDialogPane().getStylesheets().add(
-                getClass().getResource("/io/github/davidefornari/blackjack/ui/blackjack.css").toExternalForm());
-        dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
-
-        ComboBox<Integer> deckCombo = new ComboBox<>(FXCollections.observableArrayList(1, 2, 4, 6, 8));
-        deckCombo.getSelectionModel().select(Integer.valueOf(pendingRules.deckCount()));
+    private VBox buildGameSettingsOverlay() {
+        Label title = new Label("Game Settings");
+        title.getStyleClass().add("setup-title");
 
         ToggleGroup softSeventeenGroup = new ToggleGroup();
-        RadioButton standRadio = new RadioButton("Stand (S17, friendlier)");
-        RadioButton hitRadio = new RadioButton("Hit (H17, standard casino)");
         standRadio.setToggleGroup(softSeventeenGroup);
         hitRadio.setToggleGroup(softSeventeenGroup);
-        (pendingRules.dealerHitsSoftSeventeen() ? hitRadio : standRadio).setSelected(true);
-
-        CheckBox doubleAfterSplitCheck = new CheckBox("Allowed");
-        doubleAfterSplitCheck.setSelected(pendingRules.doubleAfterSplitAllowed());
 
         ToggleGroup payoutGroup = new ToggleGroup();
-        RadioButton payout32Radio = new RadioButton("3:2 (standard)");
-        RadioButton payout65Radio = new RadioButton("6:5 (worse for the player)");
         payout32Radio.setToggleGroup(payoutGroup);
         payout65Radio.setToggleGroup(payoutGroup);
-        (isStandardPayout(pendingRules.blackjackPayoutRatio()) ? payout32Radio : payout65Radio).setSelected(true);
 
-        Slider penetrationSlider = new Slider(40, 80, pendingRules.penetrationPercent());
         penetrationSlider.setMajorTickUnit(10);
         penetrationSlider.setMinorTickCount(1);
         penetrationSlider.setSnapToTicks(true);
         penetrationSlider.setShowTickMarks(true);
-        Label penetrationValueLabel = new Label(pendingRules.penetrationPercent() + "%");
         penetrationSlider.valueProperty().addListener((obs, oldVal, newVal) ->
                 penetrationValueLabel.setText(Math.round(newVal.doubleValue()) + "%"));
-
-        ComboBox<Integer> maxSplitCombo = new ComboBox<>(FXCollections.observableArrayList(2, 3, 4));
-        maxSplitCombo.getSelectionModel().select(Integer.valueOf(pendingRules.maxSplitHands()));
 
         GridPane grid = new GridPane();
         grid.setHgap(14);
         grid.setVgap(12);
-        grid.setPadding(new Insets(18));
+        grid.setAlignment(Pos.CENTER);
         int row = 0;
         grid.addRow(row++, new Label("Deck count"), deckCombo);
         grid.addRow(row++, new Label("Dealer soft 17"), new VBox(4, standRadio, hitRadio));
@@ -330,25 +324,60 @@ public final class GameController {
         grid.addRow(row++, new Label("Blackjack payout"), new VBox(4, payout32Radio, payout65Radio));
         grid.addRow(row++, new Label("Shoe penetration"), new HBox(8, penetrationSlider, penetrationValueLabel));
         grid.addRow(row++, new Label("Max split hands"), maxSplitCombo);
-        dialog.getDialogPane().setContent(grid);
 
-        dialog.setResultConverter(buttonType -> {
-            if (buttonType != ButtonType.OK) {
-                return null;
-            }
-            return new GameRules(
-                    deckCombo.getValue(),
-                    (int) Math.round(penetrationSlider.getValue()),
-                    hitRadio.isSelected(),
-                    payout32Radio.isSelected() ? 1.5 : 1.2,
-                    doubleAfterSplitCheck.isSelected(),
-                    maxSplitCombo.getValue());
-        });
+        Button saveButton = new Button("Save");
+        saveButton.getStyleClass().add("primary-button");
+        saveButton.setOnAction(e -> applyGameSettings());
 
-        dialog.showAndWait().ifPresent(rules -> {
-            pendingRules = rules;
-            rulesSummaryLabel.setText(describeRules(pendingRules));
-        });
+        Button cancelButton = new Button("Cancel");
+        cancelButton.setOnAction(e -> hideGameSettingsOverlay());
+
+        HBox buttonRow = new HBox(12, cancelButton, saveButton);
+        buttonRow.setAlignment(Pos.CENTER);
+
+        VBox card = new VBox(16, title, grid, buttonRow);
+        card.setAlignment(Pos.CENTER);
+        card.setPadding(new Insets(28));
+        card.setMaxWidth(420);
+        card.getStyleClass().add("setup-card");
+
+        VBox overlay = new VBox(card);
+        overlay.setAlignment(Pos.CENTER);
+        overlay.getStyleClass().add("setup-overlay");
+        overlay.setVisible(false);
+        overlay.setManaged(false);
+        return overlay;
+    }
+
+    /** Resets every control from {@code pendingRules} so a prior abandoned edit never lingers into the next open. */
+    private void showGameSettingsOverlay() {
+        deckCombo.getSelectionModel().select(Integer.valueOf(pendingRules.deckCount()));
+        (pendingRules.dealerHitsSoftSeventeen() ? hitRadio : standRadio).setSelected(true);
+        doubleAfterSplitCheck.setSelected(pendingRules.doubleAfterSplitAllowed());
+        (isStandardPayout(pendingRules.blackjackPayoutRatio()) ? payout32Radio : payout65Radio).setSelected(true);
+        penetrationSlider.setValue(pendingRules.penetrationPercent());
+        penetrationValueLabel.setText(pendingRules.penetrationPercent() + "%");
+        maxSplitCombo.getSelectionModel().select(Integer.valueOf(pendingRules.maxSplitHands()));
+
+        gameSettingsOverlay.setVisible(true);
+        gameSettingsOverlay.setManaged(true);
+    }
+
+    private void hideGameSettingsOverlay() {
+        gameSettingsOverlay.setVisible(false);
+        gameSettingsOverlay.setManaged(false);
+    }
+
+    private void applyGameSettings() {
+        pendingRules = new GameRules(
+                deckCombo.getValue(),
+                (int) Math.round(penetrationSlider.getValue()),
+                hitRadio.isSelected(),
+                payout32Radio.isSelected() ? 1.5 : 1.2,
+                doubleAfterSplitCheck.isSelected(),
+                maxSplitCombo.getValue());
+        rulesSummaryLabel.setText(describeRules(pendingRules));
+        hideGameSettingsOverlay();
     }
 
     private boolean isStandardPayout(double ratio) {
