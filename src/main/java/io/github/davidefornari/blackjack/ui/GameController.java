@@ -37,6 +37,7 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
+import javafx.scene.text.TextAlignment;
 import javafx.stage.Stage;
 import javafx.util.Duration;
 import javafx.util.StringConverter;
@@ -62,6 +63,7 @@ public final class GameController {
 
     private final StackPane root = new StackPane();
     private final VBox setupOverlay;
+    private final VBox confirmNewGameOverlay;
     private final BorderPane tableLayout;
 
     private final HandPane dealerPane = new HandPane();
@@ -109,6 +111,7 @@ public final class GameController {
 
     public GameController() {
         setupOverlay = buildSetupOverlay();
+        confirmNewGameOverlay = buildConfirmNewGameOverlay();
         tableLayout = buildTableLayout();
 
         shoeInfoLabel.getStyleClass().add("count-badge");
@@ -127,7 +130,7 @@ public final class GameController {
         winLoseBanner.setVisible(false);
         winLoseBanner.setOpacity(0);
 
-        root.getChildren().addAll(tableLayout, shoeInfoLabel, winLoseBanner, setupOverlay);
+        root.getChildren().addAll(tableLayout, shoeInfoLabel, winLoseBanner, confirmNewGameOverlay, setupOverlay);
         wireActions();
         refresh();
     }
@@ -217,6 +220,55 @@ public final class GameController {
         overlay.setSpacing(18);
         overlay.getStyleClass().add("setup-overlay");
         return overlay;
+    }
+
+    /**
+     * In-theme replacement for a plain {@link javafx.scene.control.Alert} confirmation —
+     * reuses the same {@code setup-overlay}/{@code setup-card} look as the setup screen
+     * instead of a default-styled system dialog, which looked out of place on this table
+     * and had its own contrast problems (see {@code openGameSettingsDialog()}).
+     */
+    private VBox buildConfirmNewGameOverlay() {
+        Label title = new Label("Start New Game");
+        title.getStyleClass().add("setup-title");
+
+        Label message = new Label(
+                "Leave the table and start a new game? This resets your bankroll and ends the current session.");
+        message.setWrapText(true);
+        message.setTextAlignment(TextAlignment.CENTER);
+
+        Button confirmButton = new Button("Yes, Start New Game");
+        confirmButton.getStyleClass().add("primary-button");
+        confirmButton.setOnAction(e -> confirmNewGame());
+
+        Button cancelButton = new Button("Cancel");
+        cancelButton.setOnAction(e -> hideConfirmNewGameOverlay());
+
+        HBox buttonRow = new HBox(12, cancelButton, confirmButton);
+        buttonRow.setAlignment(Pos.CENTER);
+
+        VBox card = new VBox(16, title, message, buttonRow);
+        card.setAlignment(Pos.CENTER);
+        card.setPadding(new Insets(28));
+        card.setMaxWidth(340);
+        card.getStyleClass().add("setup-card");
+
+        VBox overlay = new VBox(card);
+        overlay.setAlignment(Pos.CENTER);
+        overlay.getStyleClass().add("setup-overlay");
+        overlay.setVisible(false);
+        overlay.setManaged(false);
+        return overlay;
+    }
+
+    private void showConfirmNewGameOverlay() {
+        confirmNewGameOverlay.setVisible(true);
+        confirmNewGameOverlay.setManaged(true);
+    }
+
+    private void hideConfirmNewGameOverlay() {
+        confirmNewGameOverlay.setVisible(false);
+        confirmNewGameOverlay.setManaged(false);
     }
 
     /**
@@ -553,7 +605,13 @@ public final class GameController {
         refresh();
     }
 
+    /** Confirms first — "New Game" resets the bankroll and ends the session, so a misclick shouldn't be able to lose it silently. */
     private void onNewGame() {
+        showConfirmNewGameOverlay();
+    }
+
+    private void confirmNewGame() {
+        hideConfirmNewGameOverlay();
         phase = Phase.SETUP;
         table = null;
         player = null;

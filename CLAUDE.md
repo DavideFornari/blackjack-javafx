@@ -272,6 +272,18 @@ document, still open; 7 is a grab-bag to pick from opportunistically (one item d
    - Keyboard shortcuts: H = hit, S = stand, D = double, Enter = deal.
    - Remember the last bet as the next round's default instead of resetting to
      `DEFAULT_BET`.
+   - ~~A confirmation before "New Game"~~ **Done (2026-09-16), not in the roadmap
+     originally — added on request to stop a misclick from silently wiping the
+     bankroll.** First built with `javafx.scene.control.Alert`; **explicitly rejected**
+     after visual review — default Alert theming produced near-invisible header text
+     (same contrast trap as the settings dialog), a generic system-dialog look totally
+     out of place on the felt table, and locale-dependent button captions (`ButtonType.YES`/
+     `CANCEL` render in the OS locale — showed up as "Si"/"Annulla" on an Italian system,
+     jarring next to the rest of the English UI). **Replaced with a custom overlay**
+     (`GameController.buildConfirmNewGameOverlay()`) reusing the existing
+     `setup-overlay`/`setup-card` styles instead — same dark card, gold primary button,
+     explicit English text, fully in our own CSS. See the design-standard note this
+     established, under "Notes for the next session working here".
 
 ## Roadmap: possible upgrades & features
 
@@ -346,3 +358,17 @@ document, still open; 7 is a grab-bag to pick from opportunistically (one item d
   re-laying-out root, leaving content pinned top-left in a mostly-blank window. Call
   `show()` first (its own auto-sizing already accounts for the min constraints), then
   `centerOnScreen()` if needed.
+- **Design standard set 2026-09-16: prefer a custom in-theme overlay over
+  `javafx.scene.control.Dialog`/`Alert` for anything user-facing.** Two separate popups
+  were built with stock JavaFX dialogs this session and both had default-theming
+  problems — the Game Settings dialog needed a RadioButton/CheckBox text-color override
+  to be readable (see item 5 above), and the first "New Game" confirmation (built with
+  `Alert`) was rejected outright for near-invisible header text, a generic system-dialog
+  look that broke the felt-table visual identity, and locale-dependent button captions
+  (`ButtonType.YES`/`CANCEL` render in the OS locale, not English). The confirmation was
+  rebuilt as a plain `VBox` reusing `setup-overlay`/`setup-card` (see
+  `buildConfirmNewGameOverlay()`) — full control over text, color, and language, and it
+  actually looks like part of this app. **Next planned step: restyle the Game Settings
+  dialog the same way**, on its own branch — replace `openGameSettingsDialog()`'s
+  `Dialog<GameRules>` with an in-theme overlay following this same pattern, carrying over
+  its exact field set (deck count, S17/H17, DAS, payout, penetration, max splits).
