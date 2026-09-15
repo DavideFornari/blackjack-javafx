@@ -29,3 +29,7 @@ src/main/java/io/github/davidefornari/blackjack/
   ui/       JavaFX scene graph, wired directly in Java (no FXML)
 src/test/java/.../engine/   JUnit 5 tests
 ```
+
+## License
+
+[MIT](LICENSE)
