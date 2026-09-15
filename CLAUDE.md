@@ -165,10 +165,10 @@ the implementation against the rules above, not just against itself.
 
 Investigated and approved in session with the project owner; supersedes the more
 general bullets below where they overlap (noted inline). Items 1-3 are quick and
-independent — **done and visually confirmed 2026-09-14**; **4 is done and visually
-confirmed 2026-09-16**, though it evolved past its original spec through several rounds
-of feedback (see the item itself); 5 is still open; 6 is the highest-risk item on this
-whole document; 7 is a grab-bag to pick from opportunistically (one item done
+independent — **done and visually confirmed 2026-09-14**; **4 and 5 are done and
+visually confirmed 2026-09-16**, both evolved past their original spec through several
+rounds of feedback (see each item itself); 6 is the highest-risk item on this whole
+document, still open; 7 is a grab-bag to pick from opportunistically (one item done
 2026-09-16, see below).
 
 1. ~~**Fix: the "Bet:" label is unreadable**~~ **Done.** Added a global
@@ -211,20 +211,33 @@ whole document; 7 is a grab-bag to pick from opportunistically (one item done
      `betStackPane` hides itself (`setVisible`/`setManaged`) once a hand exists, so the
      bet total is never shown twice.
 
-5. **Game settings popup**, exposing what `GameRules` already supports but the UI
-   doesn't (supersedes "Expose `GameRules` on the setup screen" below). A modal dialog
-   reachable before "Sit Down":
+5. ~~**Game settings popup**~~ **Done (2026-09-16).** Exposes what `GameRules` already
+   supported but the UI didn't. "Game Settings" button on the setup screen opens a modal
+   `Dialog<GameRules>` (`GameController.openGameSettingsDialog()`), reachable before
+   "Sit Down", with a live summary line (`rulesSummaryLabel`) on the setup card showing
+   the currently-configured rules so a change doesn't disappear into an unopened dialog:
    - Deck count: 1 / 2 / 4 / 6 / 8 — `GameRules.deckCount()`
    - Dealer soft 17: stand (S17, friendlier) vs. hit (H17, standard casino) —
      `GameRules.dealerHitsSoftSeventeen()`
    - Double after split: on/off — `GameRules.doubleAfterSplitAllowed()`
-   - Blackjack payout: 3:2 (standard) vs. 6:5 (worse for the player — worth including
-     so the difference is visible, not just silently defaulting to the better one) —
+   - Blackjack payout: 3:2 (standard) vs. 6:5 (worse for the player) —
      `GameRules.blackjackPayoutRatio()`
-   - Shoe penetration: a percentage slider, 40-80% — `GameRules.penetrationPercent()`
+   - Shoe penetration: a 40-80% slider — `GameRules.penetrationPercent()`
    - Max split hands: 2-4 — `GameRules.maxSplitHands()`
-   All of these are already constructor parameters on `GameRules` — this is purely a UI
-   task, no engine changes needed.
+   All of these were already constructor parameters on `GameRules`, so this was purely a
+   UI task, no engine changes. The chosen rules are held in a new `pendingRules` field
+   and only take effect on the next "Sit Down" (`onSitDown()` now uses `pendingRules`
+   instead of `GameRules.standard()`).
+   **Dialog styling took several rounds of back-and-forth** — worth recording exactly
+   where it landed so it isn't re-litigated: the `Dialog`'s own default background is
+   left completely alone (multiple attempts to override it — a light-gray background
+   with dark text, and a light-text-on-the-default-background variant — were both
+   explicitly rejected). The *only* override is on the RadioButton/CheckBox caption
+   text-fill (`.game-settings-dialog .radio-button, .check-box` in `blackjack.css`,
+   currently `#6e6e6e`), because the default caption color wasn't readable against
+   the dialog's default background. If contrast comes up again, adjust only that one
+   color value — don't reach for a background-color override again, that's the one
+   thing that was tried and explicitly turned down.
 
 6. **Visible deck + deal-from-deck animation.** The highest-risk item here —
    coordinate-math-heavy and genuinely hard to verify without watching it run:

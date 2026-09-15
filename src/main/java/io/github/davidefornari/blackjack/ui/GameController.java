@@ -21,12 +21,18 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Parent;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
+import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
+import javafx.scene.control.RadioButton;
+import javafx.scene.control.Slider;
 import javafx.scene.control.TextField;
+import javafx.scene.control.ToggleGroup;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
@@ -91,6 +97,7 @@ public final class GameController {
             new ComboBox<>(FXCollections.observableArrayList(CountingSystem.values()));
     private final CheckBox showCountCheckBox = new CheckBox("Show card count");
     private final Label setupErrorLabel = new Label();
+    private final Label rulesSummaryLabel = new Label();
 
     private Phase phase = Phase.SETUP;
     private BlackjackTable table;
@@ -98,6 +105,7 @@ public final class GameController {
     private Map<Hand, Settlement> lastSettlements = Map.of();
     private boolean showCardCount;
     private Stage stage;
+    private GameRules pendingRules = GameRules.standard();
 
     public GameController() {
         setupOverlay = buildSetupOverlay();
@@ -178,6 +186,13 @@ public final class GameController {
         setupErrorLabel.getStyleClass().add("error-label");
         showCountCheckBox.setSelected(false);
 
+        rulesSummaryLabel.getStyleClass().add("rules-summary-label");
+        rulesSummaryLabel.setWrapText(true);
+        rulesSummaryLabel.setText(describeRules(pendingRules));
+
+        Button gameSettingsButton = new Button("Game Settings");
+        gameSettingsButton.setOnAction(e -> openGameSettingsDialog());
+
         Button sitDownButton = new Button("Sit Down");
         sitDownButton.getStyleClass().add("primary-button");
         sitDownButton.setOnAction(e -> onSitDown());
@@ -187,6 +202,8 @@ public final class GameController {
                 new Label("Starting bankroll"), bankrollField,
                 new Label("Card-counting system"), countingCombo,
                 showCountCheckBox,
+                gameSettingsButton,
+                rulesSummaryLabel,
                 setupErrorLabel,
                 sitDownButton);
         form.setAlignment(Pos.CENTER);
@@ -200,6 +217,99 @@ public final class GameController {
         overlay.setSpacing(18);
         overlay.getStyleClass().add("setup-overlay");
         return overlay;
+    }
+
+    /**
+     * Every field here is already a {@link GameRules} constructor parameter — this dialog
+     * is purely UI, no engine changes. The dialog's own default background and field labels
+     * are left alone; only the RadioButton/CheckBox caption text gets a small brightness bump
+     * via {@code .game-settings-dialog} in {@code blackjack.css}, on request, for a bit more
+     * contrast against that background.
+     */
+    private void openGameSettingsDialog() {
+        Dialog<GameRules> dialog = new Dialog<>();
+        dialog.setTitle("Game Settings");
+        dialog.initOwner(stage);
+        dialog.getDialogPane().getStyleClass().add("game-settings-dialog");
+        dialog.getDialogPane().getStylesheets().add(
+                getClass().getResource("/io/github/davidefornari/blackjack/ui/blackjack.css").toExternalForm());
+        dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+
+        ComboBox<Integer> deckCombo = new ComboBox<>(FXCollections.observableArrayList(1, 2, 4, 6, 8));
+        deckCombo.getSelectionModel().select(Integer.valueOf(pendingRules.deckCount()));
+
+        ToggleGroup softSeventeenGroup = new ToggleGroup();
+        RadioButton standRadio = new RadioButton("Stand (S17, friendlier)");
+        RadioButton hitRadio = new RadioButton("Hit (H17, standard casino)");
+        standRadio.setToggleGroup(softSeventeenGroup);
+        hitRadio.setToggleGroup(softSeventeenGroup);
+        (pendingRules.dealerHitsSoftSeventeen() ? hitRadio : standRadio).setSelected(true);
+
+        CheckBox doubleAfterSplitCheck = new CheckBox("Allowed");
+        doubleAfterSplitCheck.setSelected(pendingRules.doubleAfterSplitAllowed());
+
+        ToggleGroup payoutGroup = new ToggleGroup();
+        RadioButton payout32Radio = new RadioButton("3:2 (standard)");
+        RadioButton payout65Radio = new RadioButton("6:5 (worse for the player)");
+        payout32Radio.setToggleGroup(payoutGroup);
+        payout65Radio.setToggleGroup(payoutGroup);
+        (isStandardPayout(pendingRules.blackjackPayoutRatio()) ? payout32Radio : payout65Radio).setSelected(true);
+
+        Slider penetrationSlider = new Slider(40, 80, pendingRules.penetrationPercent());
+        penetrationSlider.setMajorTickUnit(10);
+        penetrationSlider.setMinorTickCount(1);
+        penetrationSlider.setSnapToTicks(true);
+        penetrationSlider.setShowTickMarks(true);
+        Label penetrationValueLabel = new Label(pendingRules.penetrationPercent() + "%");
+        penetrationSlider.valueProperty().addListener((obs, oldVal, newVal) ->
+                penetrationValueLabel.setText(Math.round(newVal.doubleValue()) + "%"));
+
+        ComboBox<Integer> maxSplitCombo = new ComboBox<>(FXCollections.observableArrayList(2, 3, 4));
+        maxSplitCombo.getSelectionModel().select(Integer.valueOf(pendingRules.maxSplitHands()));
+
+        GridPane grid = new GridPane();
+        grid.setHgap(14);
+        grid.setVgap(12);
+        grid.setPadding(new Insets(18));
+        int row = 0;
+        grid.addRow(row++, new Label("Deck count"), deckCombo);
+        grid.addRow(row++, new Label("Dealer soft 17"), new VBox(4, standRadio, hitRadio));
+        grid.addRow(row++, new Label("Double after split"), doubleAfterSplitCheck);
+        grid.addRow(row++, new Label("Blackjack payout"), new VBox(4, payout32Radio, payout65Radio));
+        grid.addRow(row++, new Label("Shoe penetration"), new HBox(8, penetrationSlider, penetrationValueLabel));
+        grid.addRow(row++, new Label("Max split hands"), maxSplitCombo);
+        dialog.getDialogPane().setContent(grid);
+
+        dialog.setResultConverter(buttonType -> {
+            if (buttonType != ButtonType.OK) {
+                return null;
+            }
+            return new GameRules(
+                    deckCombo.getValue(),
+                    (int) Math.round(penetrationSlider.getValue()),
+                    hitRadio.isSelected(),
+                    payout32Radio.isSelected() ? 1.5 : 1.2,
+                    doubleAfterSplitCheck.isSelected(),
+                    maxSplitCombo.getValue());
+        });
+
+        dialog.showAndWait().ifPresent(rules -> {
+            pendingRules = rules;
+            rulesSummaryLabel.setText(describeRules(pendingRules));
+        });
+    }
+
+    private boolean isStandardPayout(double ratio) {
+        return Math.abs(ratio - 1.5) < 0.01;
+    }
+
+    private String describeRules(GameRules rules) {
+        return rules.deckCount() + " decks, "
+                + (rules.dealerHitsSoftSeventeen() ? "H17" : "S17") + ", "
+                + (isStandardPayout(rules.blackjackPayoutRatio()) ? "3:2" : "6:5") + ", DAS "
+                + (rules.doubleAfterSplitAllowed() ? "on" : "off") + ", "
+                + rules.penetrationPercent() + "% penetration, max "
+                + rules.maxSplitHands() + " splits";
     }
 
     private BorderPane buildTableLayout() {
@@ -307,7 +417,7 @@ public final class GameController {
         player = new Player(name, bankroll);
         player.setPreferredCountingSystem(countingCombo.getValue());
         showCardCount = showCountCheckBox.isSelected();
-        GameRules rules = GameRules.standard();
+        GameRules rules = pendingRules;
         Shoe shoe = new Shoe(rules.deckCount(), rules.penetrationPercent());
         table = new BlackjackTable(player, shoe, rules);
 

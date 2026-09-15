@@ -221,3 +221,21 @@ Button:disabled {
 .setup-card .check-box {
     -fx-text-fill: #dddddd;
 }
+
+/* Two classes, so this outranks ".setup-card Label" above (same ancestor, but that rule
+   also has a type selector, which only wins ties — it doesn't beat an extra class). */
+.setup-card .rules-summary-label {
+    -fx-font-size: 11px;
+    -fx-font-style: italic;
+    -fx-text-fill: #999999;
+    -fx-text-alignment: center;
+}
+
+/* ---- game settings dialog ---- */
+/* Background and field labels stay default — only a small brightness bump on the
+   RadioButton/CheckBox caption text, for a bit more contrast. */
+
+.game-settings-dialog .radio-button,
+.game-settings-dialog .check-box {
+    -fx-text-fill: #6e6e6e;
+}
