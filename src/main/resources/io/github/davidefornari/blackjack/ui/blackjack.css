@@ -67,6 +67,11 @@ Label {
     -fx-text-fill: #e74c3c;
 }
 
+.win-lose-banner-push .win-lose-banner-title,
+.win-lose-banner-push .win-lose-banner-amount {
+    -fx-text-fill: #f0f0f0;
+}
+
 /* ---- hands ---- */
 
 .hand-pane {

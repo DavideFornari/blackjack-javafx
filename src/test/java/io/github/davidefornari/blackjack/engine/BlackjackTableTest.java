@@ -262,7 +262,7 @@ class BlackjackTableTest {
                 c(Rank.SEVEN, Suit.CLUBS), c(Rank.SIX, Suit.SPADES),
                 c(Rank.TWO, Suit.HEARTS)
         );
-        GameRules h17 = new GameRules(6, 50, true, 1.5, true, 4);
+        GameRules h17 = new GameRules(6, 50, true, 1.5, true, 4, false);
         BlackjackTable table = new BlackjackTable(player, shoe, h17);
 
         table.startRound(100);
@@ -270,5 +270,117 @@ class BlackjackTableTest {
         table.playDealerTurn();
 
         assertEquals(3, table.dealer().hand().size());
+    }
+
+    @Test
+    void insuranceIsNotOfferedByDefaultEvenAgainstAnAceUpCard() {
+        Player player = new Player("Ada", 1000);
+        // Same deal as dealerBlackjackEndsTheRoundBeforeThePlayerCanAct, but via GameRules.standard()
+        // (insurance off) — the round should resolve immediately, exactly as it always has.
+        Shoe shoe = fixedShoe(
+                c(Rank.NINE, Suit.CLUBS), c(Rank.ACE, Suit.SPADES),
+                c(Rank.SEVEN, Suit.CLUBS), c(Rank.KING, Suit.SPADES)
+        );
+        BlackjackTable table = new BlackjackTable(player, shoe, GameRules.standard());
+
+        table.startRound(100);
+
+        assertFalse(table.isInsurancePending());
+        assertTrue(table.isPlayerTurnComplete());
+        assertTrue(table.lastInsuranceSettlement().isEmpty());
+    }
+
+    private static GameRules withInsurance() {
+        GameRules standard = GameRules.standard();
+        return new GameRules(
+                standard.deckCount(), standard.penetrationPercent(), standard.dealerHitsSoftSeventeen(),
+                standard.blackjackPayoutRatio(), standard.doubleAfterSplitAllowed(), standard.maxSplitHands(), true);
+    }
+
+    @Test
+    void insuranceIsOnlyOfferedOnAnAceUpCardNotATen() {
+        Player player = new Player("Ada", 1000);
+        // dealer up = 10, hole = Ace -> a natural, but insurance is never offered on a ten
+        // up-card in real rules, so this must resolve immediately just like before.
+        Shoe shoe = fixedShoe(
+                c(Rank.NINE, Suit.CLUBS), c(Rank.TEN, Suit.SPADES),
+                c(Rank.SEVEN, Suit.CLUBS), c(Rank.ACE, Suit.SPADES)
+        );
+        BlackjackTable table = new BlackjackTable(player, shoe, withInsurance());
+
+        table.startRound(100);
+
+        assertFalse(table.isInsurancePending());
+        assertTrue(table.isPlayerTurnComplete());
+        assertTrue(table.dealer().hasBlackjack());
+    }
+
+    @Test
+    void takingInsuranceAgainstADealerBlackjackPaysTwoToOne() {
+        Player player = new Player("Ada", 1000);
+        // player: 9,7 = 16. dealer up = Ace, hole = King -> dealer natural.
+        Shoe shoe = fixedShoe(
+                c(Rank.NINE, Suit.CLUBS), c(Rank.ACE, Suit.SPADES),
+                c(Rank.SEVEN, Suit.CLUBS), c(Rank.KING, Suit.SPADES)
+        );
+        BlackjackTable table = new BlackjackTable(player, shoe, withInsurance());
+
+        table.startRound(100);
+        assertTrue(table.isInsurancePending());
+        assertFalse(table.dealer().isHoleCardRevealed());
+        assertEquals(50, table.maxInsuranceBet());
+        assertEquals(900, player.bankroll()); // bet debited, insurance not yet placed
+
+        table.takeInsurance(50);
+
+        assertFalse(table.isInsurancePending());
+        assertTrue(table.dealer().isHoleCardRevealed());
+        assertTrue(table.isPlayerTurnComplete());
+        assertEquals(1000, player.bankroll()); // -100 bet, -50 insurance, +150 insurance payout
+        assertEquals(new InsuranceSettlement(50, true, 150), table.lastInsuranceSettlement().orElseThrow());
+
+        table.playDealerTurn();
+        List<Settlement> settlements = table.settle();
+        assertEquals(RoundOutcome.LOSS, settlements.get(0).outcome());
+        assertEquals(1000, player.bankroll()); // main hand's loss pays nothing more; insurance already made it whole
+    }
+
+    @Test
+    void decliningInsuranceForfeitsNothingButStillLosesToADealerBlackjack() {
+        Player player = new Player("Ada", 1000);
+        Shoe shoe = fixedShoe(
+                c(Rank.NINE, Suit.CLUBS), c(Rank.ACE, Suit.SPADES),
+                c(Rank.SEVEN, Suit.CLUBS), c(Rank.KING, Suit.SPADES)
+        );
+        BlackjackTable table = new BlackjackTable(player, shoe, withInsurance());
+
+        table.startRound(100);
+        table.declineInsurance();
+
+        assertTrue(table.isPlayerTurnComplete());
+        assertEquals(new InsuranceSettlement(0, false, 0), table.lastInsuranceSettlement().orElseThrow());
+
+        table.playDealerTurn();
+        List<Settlement> settlements = table.settle();
+        assertEquals(RoundOutcome.LOSS, settlements.get(0).outcome());
+        assertEquals(900, player.bankroll());
+    }
+
+    @Test
+    void insuranceIsLostWhenTheDealerDoesNotHaveBlackjack() {
+        Player player = new Player("Ada", 1000);
+        // dealer up = Ace, hole = 6 -> soft 17, no dealer blackjack.
+        Shoe shoe = fixedShoe(
+                c(Rank.TEN, Suit.CLUBS), c(Rank.ACE, Suit.SPADES),
+                c(Rank.SEVEN, Suit.CLUBS), c(Rank.SIX, Suit.SPADES)
+        );
+        BlackjackTable table = new BlackjackTable(player, shoe, withInsurance());
+
+        table.startRound(100);
+        table.takeInsurance(50);
+
+        assertFalse(table.isPlayerTurnComplete());
+        assertEquals(850, player.bankroll()); // -100 bet, -50 insurance, no payout
+        assertEquals(new InsuranceSettlement(50, false, 0), table.lastInsuranceSettlement().orElseThrow());
     }
 }

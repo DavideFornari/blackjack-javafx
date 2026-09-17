@@ -6,6 +6,7 @@ import io.github.davidefornari.blackjack.engine.CountingSystem;
 import io.github.davidefornari.blackjack.engine.Dealer;
 import io.github.davidefornari.blackjack.engine.GameRules;
 import io.github.davidefornari.blackjack.engine.Hand;
+import io.github.davidefornari.blackjack.engine.InsuranceSettlement;
 import io.github.davidefornari.blackjack.engine.Player;
 import io.github.davidefornari.blackjack.engine.RoundOutcome;
 import io.github.davidefornari.blackjack.engine.Settlement;
@@ -45,16 +46,17 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
- * Owns the whole game session (setup -> betting -> player turn -> settlement -> next
- * round) and keeps the JavaFX scene graph in sync with the {@link BlackjackTable}
- * engine state. There is no FXML: for a UI this size, wiring the scene graph directly
- * in Java keeps every binding visible in one place.
+ * Owns the whole game session (setup -> betting -> optional insurance decision ->
+ * player turn -> settlement -> next round) and keeps the JavaFX scene graph in sync
+ * with the {@link BlackjackTable} engine state. There is no FXML: for a UI this size,
+ * wiring the scene graph directly in Java keeps every binding visible in one place.
  */
 public final class GameController {
 
-    private enum Phase { SETUP, BETTING, PLAYER_TURN, ROUND_OVER, GAME_OVER }
+    private enum Phase { SETUP, BETTING, AWAITING_INSURANCE, PLAYER_TURN, ROUND_OVER, GAME_OVER }
 
     private static final long DEFAULT_BANKROLL = 1000;
     private static final long[] CHIP_DENOMINATIONS = {5, 10, 25, 50, 100};
@@ -63,6 +65,7 @@ public final class GameController {
     private final VBox setupOverlay;
     private final VBox confirmNewGameOverlay;
     private final VBox gameSettingsOverlay;
+    private final VBox insuranceOverlay;
     private final BorderPane tableLayout;
 
     private final HandPane dealerPane = new HandPane();
@@ -111,6 +114,11 @@ public final class GameController {
     private final Label penetrationValueLabel = new Label();
     private final ComboBox<Integer> maxSplitCombo =
             new ComboBox<>(FXCollections.observableArrayList(2, 3, 4));
+    private final CheckBox insuranceAllowedCheck = new CheckBox("Offer insurance against a dealer Ace");
+
+    private final Label insuranceMessageLabel = new Label();
+    private final HandPane insuranceHandPreview = new HandPane();
+    private PauseTransition insuranceDelay;
 
     private Phase phase = Phase.SETUP;
     private BlackjackTable table;
@@ -124,6 +132,7 @@ public final class GameController {
         setupOverlay = buildSetupOverlay();
         confirmNewGameOverlay = buildConfirmNewGameOverlay();
         gameSettingsOverlay = buildGameSettingsOverlay();
+        insuranceOverlay = buildInsuranceOverlay();
         tableLayout = buildTableLayout();
 
         shoeInfoLabel.getStyleClass().add("count-badge");
@@ -145,7 +154,8 @@ public final class GameController {
         // gameSettingsOverlay is opened from a button inside setupOverlay, so it must come
         // after it here to actually render on top of it.
         root.getChildren().addAll(
-                tableLayout, shoeInfoLabel, winLoseBanner, confirmNewGameOverlay, setupOverlay, gameSettingsOverlay);
+                tableLayout, shoeInfoLabel, winLoseBanner, confirmNewGameOverlay, insuranceOverlay,
+                setupOverlay, gameSettingsOverlay);
         wireActions();
         refresh();
     }
@@ -324,6 +334,7 @@ public final class GameController {
         grid.addRow(row++, new Label("Blackjack payout"), new VBox(4, payout32Radio, payout65Radio));
         grid.addRow(row++, new Label("Shoe penetration"), new HBox(8, penetrationSlider, penetrationValueLabel));
         grid.addRow(row++, new Label("Max split hands"), maxSplitCombo);
+        grid.addRow(row++, new Label("Insurance"), insuranceAllowedCheck);
 
         Button saveButton = new Button("Save");
         saveButton.getStyleClass().add("primary-button");
@@ -358,6 +369,7 @@ public final class GameController {
         penetrationSlider.setValue(pendingRules.penetrationPercent());
         penetrationValueLabel.setText(pendingRules.penetrationPercent() + "%");
         maxSplitCombo.getSelectionModel().select(Integer.valueOf(pendingRules.maxSplitHands()));
+        insuranceAllowedCheck.setSelected(pendingRules.insuranceAllowed());
 
         gameSettingsOverlay.setVisible(true);
         gameSettingsOverlay.setManaged(true);
@@ -375,7 +387,8 @@ public final class GameController {
                 hitRadio.isSelected(),
                 payout32Radio.isSelected() ? 1.5 : 1.2,
                 doubleAfterSplitCheck.isSelected(),
-                maxSplitCombo.getValue());
+                maxSplitCombo.getValue(),
+                insuranceAllowedCheck.isSelected());
         rulesSummaryLabel.setText(describeRules(pendingRules));
         hideGameSettingsOverlay();
     }
@@ -390,7 +403,121 @@ public final class GameController {
                 + (isStandardPayout(rules.blackjackPayoutRatio()) ? "3:2" : "6:5") + ", DAS "
                 + (rules.doubleAfterSplitAllowed() ? "on" : "off") + ", "
                 + rules.penetrationPercent() + "% penetration, max "
-                + rules.maxSplitHands() + " splits";
+                + rules.maxSplitHands() + " splits, insurance "
+                + (rules.insuranceAllowed() ? "on" : "off");
+    }
+
+    /**
+     * Paused mid-deal, on an Ace up-card only, when {@link GameRules#insuranceAllowed()}
+     * is on — same in-theme {@code setup-overlay}/{@code setup-card} pattern as
+     * {@link #buildConfirmNewGameOverlay()} rather than a stock dialog. The insurance
+     * amount itself is fixed at the standard casino max (half the original wager) rather
+     * than an adjustable field, to avoid a bespoke bet-amount input.
+     */
+    private VBox buildInsuranceOverlay() {
+        Label title = new Label("Insurance?");
+        title.getStyleClass().add("setup-title");
+
+        insuranceMessageLabel.setWrapText(true);
+        insuranceMessageLabel.setTextAlignment(TextAlignment.CENTER);
+
+        // Shrunk down (vs. the full-size cards on the table behind this overlay) so it reads
+        // as a reference thumbnail, not a second copy of the hand competing for attention.
+        insuranceHandPreview.setScaleX(0.7);
+        insuranceHandPreview.setScaleY(0.7);
+
+        Button takeButton = new Button("Take Insurance");
+        takeButton.getStyleClass().add("primary-button");
+        takeButton.setOnAction(e -> onTakeInsurance());
+
+        Button declineButton = new Button("No Thanks");
+        declineButton.setOnAction(e -> onDeclineInsurance());
+
+        HBox buttonRow = new HBox(12, declineButton, takeButton);
+        buttonRow.setAlignment(Pos.CENTER);
+
+        VBox card = new VBox(16, title, insuranceHandPreview, insuranceMessageLabel, buttonRow);
+        card.setAlignment(Pos.CENTER);
+        card.setPadding(new Insets(28));
+        card.setMaxWidth(340);
+        card.getStyleClass().add("setup-card");
+
+        VBox overlay = new VBox(card);
+        overlay.setAlignment(Pos.CENTER);
+        overlay.getStyleClass().add("setup-overlay");
+        overlay.setVisible(false);
+        overlay.setManaged(false);
+        return overlay;
+    }
+
+    /** Shows the insurance popup after a short pause, so the dealt hand finishes animating onto the table first. */
+    private void showInsuranceOverlayAfterDelay() {
+        if (insuranceDelay != null) {
+            insuranceDelay.stop();
+        }
+        insuranceDelay = new PauseTransition(Duration.millis(500));
+        insuranceDelay.setOnFinished(e -> showInsuranceOverlay());
+        insuranceDelay.play();
+    }
+
+    private void showInsuranceOverlay() {
+        long cost = table.maxInsuranceBet();
+        insuranceMessageLabel.setText(
+                "The dealer is showing an Ace. Insure your hand for " + cost
+                        + " chips against a dealer blackjack? It pays 2:1 if the dealer has one.");
+
+        Hand hand = player.firstHand();
+        List<CardView> views = new ArrayList<>();
+        for (Card card : hand.cards()) {
+            views.add(CardView.faceUp(card));
+        }
+        insuranceHandPreview.setCaption("Your Hand");
+        insuranceHandPreview.setCards(views);
+        insuranceHandPreview.setWager(0);
+        insuranceHandPreview.setTotalText(handStatusText(hand));
+
+        insuranceOverlay.setVisible(true);
+        insuranceOverlay.setManaged(true);
+    }
+
+    private void hideInsuranceOverlay() {
+        insuranceOverlay.setVisible(false);
+        insuranceOverlay.setManaged(false);
+    }
+
+    private void onTakeInsurance() {
+        table.takeInsurance(table.maxInsuranceBet());
+        hideInsuranceOverlay();
+        afterInsuranceDecision();
+    }
+
+    private void onDeclineInsurance() {
+        table.declineInsurance();
+        hideInsuranceOverlay();
+        afterInsuranceDecision();
+    }
+
+    /**
+     * Winning insurance means the dealer had blackjack, so the round is already decided —
+     * settle it and show one combined "INSURANCE WIN +netProfit" banner (main hand profit
+     * folded in, e.g. bet 10 + insurance 5, dealer blackjack, plain losing hand: -10 main
+     * hand + 10 insurance profit = "INSURANCE WIN +0") instead of a separate insurance
+     * banner followed by the usual WIN/LOST/PUSH one. A loss or decline of insurance
+     * doesn't get its own banner — just the round message text mentions it — and the round
+     * proceeds exactly as it would have without insurance.
+     */
+    private void afterInsuranceDecision() {
+        Optional<InsuranceSettlement> insurance = table.lastInsuranceSettlement();
+        if (insurance.isPresent() && insurance.get().won()) {
+            long mainHandProfit = settleRound();
+            long insuranceProfit = insurance.get().payout() - insurance.get().amountWagered();
+            showBanner("INSURANCE WIN", mainHandProfit + insuranceProfit, "win-lose-banner-win");
+        } else if (table.isPlayerTurnComplete()) {
+            showRoundOutcomeBanner(settleRound());
+        } else {
+            phase = Phase.PLAYER_TURN;
+        }
+        refresh();
     }
 
     private BorderPane buildTableLayout() {
@@ -515,6 +642,12 @@ public final class GameController {
         }
         betErrorLabel.setText("");
         table.startRound(bet);
+        if (table.isInsurancePending()) {
+            phase = Phase.AWAITING_INSURANCE;
+            refresh();
+            showInsuranceOverlayAfterDelay();
+            return;
+        }
         if (table.isPlayerTurnComplete()) {
             settleRound();
         } else {
@@ -567,13 +700,19 @@ public final class GameController {
 
     private void afterPlayerAction() {
         if (table.isPlayerTurnComplete()) {
-            settleRound();
+            showRoundOutcomeBanner(settleRound());
         }
         refresh();
     }
 
-    /** The single place that decides the post-settlement phase: ROUND_OVER, or GAME_OVER if the bet just made cleared the bankroll. */
-    private void settleRound() {
+    /**
+     * Resolves the dealer's turn and every player hand, advances the phase (ROUND_OVER, or
+     * GAME_OVER if the bet just made cleared the bankroll), and returns the main hand(s)'
+     * total profit. Doesn't show a banner itself — callers decide that, since a win against
+     * a dealer blackjack the player insured needs its profit folded into a single combined
+     * "INSURANCE WIN" banner instead of its own {@link #showRoundOutcomeBanner}.
+     */
+    private long settleRound() {
         table.playDealerTurn();
         List<Settlement> settlements = table.settle();
         Map<Hand, Settlement> byHand = new HashMap<>();
@@ -584,19 +723,23 @@ public final class GameController {
         }
         lastSettlements = byHand;
         phase = player.isBankrupt() ? Phase.GAME_OVER : Phase.ROUND_OVER;
-        showRoundOutcomeBanner(totalProfit);
+        return totalProfit;
     }
 
-    /** Pops up a brief scale+fade "WIN +N" / "LOST -N" banner over the table; a push (net zero across every hand) shows nothing since it's neither. */
+    /** Pops up "WIN +N" / "LOST -N" / "PUSH +0" for the main hand(s) — always shown, so a push still gets a result. */
     private void showRoundOutcomeBanner(long totalProfit) {
-        if (totalProfit == 0) {
-            return;
-        }
-        boolean win = totalProfit > 0;
-        bannerTitleLabel.setText(win ? "WIN" : "LOST");
-        bannerAmountLabel.setText((win ? "+" : "-") + Math.abs(totalProfit));
-        winLoseBanner.getStyleClass().removeAll("win-lose-banner-win", "win-lose-banner-lose");
-        winLoseBanner.getStyleClass().add(win ? "win-lose-banner-win" : "win-lose-banner-lose");
+        String title = totalProfit > 0 ? "WIN" : totalProfit < 0 ? "LOST" : "PUSH";
+        String styleClass = totalProfit > 0 ? "win-lose-banner-win"
+                : totalProfit < 0 ? "win-lose-banner-lose" : "win-lose-banner-push";
+        showBanner(title, totalProfit, styleClass);
+    }
+
+    /** Scale+fade pop-in, hold, fade-out for {@code winLoseBanner}. */
+    private void showBanner(String title, long amount, String styleClass) {
+        bannerTitleLabel.setText(title);
+        bannerAmountLabel.setText((amount >= 0 ? "+" : "-") + Math.abs(amount));
+        winLoseBanner.getStyleClass().removeAll("win-lose-banner-win", "win-lose-banner-lose", "win-lose-banner-push");
+        winLoseBanner.getStyleClass().add(styleClass);
 
         if (bannerAnimation != null) {
             bannerAnimation.stop();
@@ -783,6 +926,8 @@ public final class GameController {
             messageLabel.setText(summarizeRound());
         } else if (phase == Phase.PLAYER_TURN) {
             messageLabel.setText("Your move");
+        } else if (phase == Phase.AWAITING_INSURANCE) {
+            messageLabel.setText("Insurance?");
         } else {
             messageLabel.setText("Place your bet");
         }
@@ -793,10 +938,18 @@ public final class GameController {
                 .anyMatch(s -> s.outcome() == RoundOutcome.WIN || s.outcome() == RoundOutcome.BLACKJACK_WIN);
         boolean anyLoss = lastSettlements.values().stream()
                 .anyMatch(s -> s.outcome() == RoundOutcome.LOSS || s.outcome() == RoundOutcome.BUST);
-        if (anyWin && !anyLoss) return "You win!";
-        if (anyLoss && !anyWin) return "Dealer wins";
-        if (!anyWin) return "Push";
-        return "Round over";
+        String summary;
+        if (anyWin && !anyLoss) summary = "You win!";
+        else if (anyLoss && !anyWin) summary = "Dealer wins";
+        else if (!anyWin) summary = "Push";
+        else summary = "Round over";
+
+        return table.lastInsuranceSettlement()
+                .filter(ins -> ins.amountWagered() > 0)
+                .map(ins -> summary + (ins.won()
+                        ? " — Insurance paid +" + (ins.payout() - ins.amountWagered())
+                        : " — Insurance lost -" + ins.amountWagered()))
+                .orElse(summary);
     }
 
     private void animateIn(List<CardView> views) {

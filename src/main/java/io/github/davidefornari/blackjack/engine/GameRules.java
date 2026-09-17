@@ -11,6 +11,7 @@ package io.github.davidefornari.blackjack.engine;
  * @param blackjackPayoutRatio    profit multiplier on a natural, paid on top of the returned stake (3:2 = 1.5)
  * @param doubleAfterSplitAllowed whether a hand created by a split may also be doubled down
  * @param maxSplitHands           maximum simultaneous hands a single starting pair may become
+ * @param insuranceAllowed        whether insurance is offered when the dealer's up-card is an Ace
  */
 public record GameRules(
         int deckCount,
@@ -18,7 +19,8 @@ public record GameRules(
         boolean dealerHitsSoftSeventeen,
         double blackjackPayoutRatio,
         boolean doubleAfterSplitAllowed,
-        int maxSplitHands
+        int maxSplitHands,
+        boolean insuranceAllowed
 ) {
     public GameRules {
         if (deckCount < 1) throw new IllegalArgumentException("deckCount must be >= 1");
@@ -28,8 +30,8 @@ public record GameRules(
         if (maxSplitHands < 1) throw new IllegalArgumentException("maxSplitHands must be >= 1");
     }
 
-    /** 6-deck shoe, stand on all 17s, 3:2 blackjack, DAS on, split up to 4 hands, 50% penetration. */
+    /** 6-deck shoe, stand on all 17s, 3:2 blackjack, DAS on, split up to 4 hands, 50% penetration, insurance off. */
     public static GameRules standard() {
-        return new GameRules(6, 50, false, 1.5, true, 4);
+        return new GameRules(6, 50, false, 1.5, true, 4, false);
     }
 }
