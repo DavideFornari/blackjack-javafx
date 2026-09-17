@@ -19,3 +19,8 @@ desktop.ini
 
 # Logs
 *.log
+
+# Ad-hoc screenshots (e.g. dropped in the repo root for Claude Code to inspect) —
+# never a project asset; see "Naming & file conventions" in CLAUDE.md.
+Screenshot *.png
+Screenshot*.png

@@ -43,6 +43,17 @@ win/lose banner, and the window auto-fit through several launches) was confirmed
 visually by the project owner across multiple rounds of feedback, not just by a
 successful compile.
 
+**Verified again 2026-09-17/18**, after the insurance side bet and the window icon
+below: `mvn test` passes 28/28 (five new insurance tests), and the running window —
+the insurance toggle and overlay (with its delayed pop-in and hand preview), the
+combined "INSURANCE WIN" banner, the now-always-shown round banner (including
+"PUSH +0"), and the new Ace/Jack window icon — was confirmed visually by the project
+owner across many rounds of feedback, including two rounds where the icon *looked*
+right in a screenshot but was actually still broken (see item 9 below) — a reminder
+that "no crash" and "the Image object has the right pixels" are both necessary but not
+sufficient; only an actual look at the running window (or, in that case, a live
+screenshot checked pixel-by-pixel) settles it.
+
 ## Architecture
 
 ```
@@ -56,15 +67,106 @@ src/test/java/.../engine/
 fix lives here) → `Shoe` (multi-deck, shuffle, penetration-based reshuffle, running
 counts for all four counting systems at once) → `Dealer` / `Player` → `GameRules`
 (configurable house rules, a record) → `BlackjackTable` (orchestrates one round: deal →
-player turns → dealer turn → settle) → `RoundOutcome` / `Settlement`.
+optional insurance decision → player turns → dealer turn → settle) → `RoundOutcome` /
+`Settlement` / `InsuranceSettlement`.
 
-`ui/`: `BlackjackApp` (entry point) → `GameController` (owns the `BlackjackTable`,
-builds and refreshes the whole scene graph, all button wiring) → `CardView` / `HandPane`
-(reusable view components).
+`ui/`: `BlackjackApp` (entry point, also loads the window icon via `AppIcon`) →
+`GameController` (owns the `BlackjackTable`, builds and refreshes the whole scene
+graph, all button wiring) → `CardView` / `HandPane` / `ChipView` (reusable view
+components) / `AppIcon` (loads the window/taskbar icon image).
 
 The engine has no knowledge of JavaFX and no knowledge of Scanner/console I/O either —
 keep it that way. It's what makes `BlackjackTableTest` possible without a display, and
 would let a second UI (CLI, web, whatever) reuse it unchanged.
+
+## Naming & file conventions
+
+Written down after a session where an uploaded reference image, its processed build
+artifact, and a pile of ad-hoc debug screenshots all needed somewhere to live — follow
+these rather than improvising per-file.
+
+**Java code**
+- Packages: `io.github.davidefornari.blackjack.{engine,ui}` only — nothing deeper.
+  `engine` has zero JavaFX dependency; `ui` depends on `engine`, never the reverse.
+- Classes: `PascalCase`, one public class per file, filename matches the class name
+  exactly.
+- A reusable JavaFX scene-graph component gets a `View`/`Pane` suffix naming what it
+  *is* (`CardView`, `HandPane`, `ChipView`) — not what it's *for*. A class that isn't
+  itself a Node (a static loader/factory, a plain data holder) doesn't take that
+  suffix (`AppIcon`, `GameRules`).
+- Immutable data carriers are Java `record`s named for the concept itself — no
+  `Impl`/`Data`/`DTO`/`Bean` suffixes (`Settlement`, `RoundOutcome`,
+  `InsuranceSettlement`, `GameRules`).
+- Methods: `camelCase` verbs for actions (`startRound`, `takeInsurance`,
+  `playDealerTurn`); `isX`/`hasX`/`canX` for booleans (`isPlayerTurnComplete`,
+  `hasBlackjack`, `canSplit`).
+
+**Tests**
+- Test class = `<ClassUnderTest>Test` (`BlackjackTableTest`, `HandTest`), same package,
+  under `src/test/java/...`.
+- Test methods: one long descriptive `camelCase` sentence stating the scenario *and*
+  the expected outcome — no `test` prefix, no numbering, no abbreviations
+  (`dealerBlackjackEndsTheRoundBeforeThePlayerCanAct`,
+  `takingInsuranceAgainstADealerBlackjackPaysTwoToOne`). If the sentence needs "and" to
+  cover two behaviors, it's usually two tests instead.
+
+**CSS classes** (`blackjack.css`)
+- `kebab-case`, always. A class that belongs to one specific reusable component is
+  prefixed with that component's name: `setup-*` (setup screen and every in-theme
+  overlay), `hand-*` (`HandPane`), `card-*` (`CardView`), `chip-*` (chip rail/buttons),
+  `win-lose-banner*` (the outcome banner). A class used globally — generic labels,
+  buttons, top-level layout regions (`primary-button`, `error-label`, `message-label`,
+  `status-bar`, `controls-area`, `table-layout`, `count-badge`, `bet-total-badge`) —
+  stays unprefixed; don't force one of the component prefixes onto something that
+  genuinely isn't scoped to that component.
+- A state/variant modifier appends a suffix to the base class rather than inventing an
+  unrelated name — `win-lose-banner-win` / `-lose` / `-push`, `hand-active`.
+- Every style class a Java `getStyleClass().add(...)` call applies should have a
+  matching rule in `blackjack.css` (even an empty/minimal one) — `HandPane`'s
+  `hand-wager-stack` class currently has no CSS rule at all, which isn't a naming
+  violation (the name itself is fine) but is exactly the kind of orphaned cross-reference
+  worth fixing next time that file's touched, rather than assuming a class with no rule
+  was left there on purpose.
+
+**Image/resource assets actually loaded by the app** (`src/main/resources/.../ui/`)
+- Lowercase, `kebab-case`, named for what the asset visually *is*, not its source or
+  where it came from — `app-icon.png`, `chips/white.png` (named for the chip's color,
+  which is what `ChipView`/CSS key off, not its denomination or the file it was cropped
+  from).
+- Only group assets into a subfolder when there's a real family of them (`chips/`, five
+  files); a one-off single asset sits directly under `ui/` next to `blackjack.css`
+  (`app-icon.png`) — no folder-of-one.
+- Every such asset is a *processed build artifact*: cropped, background-removed,
+  resized as needed. It is never the raw file as originally sourced — that's what the
+  `docs/` reference copy below is for.
+
+**`docs/` reference assets** (provenance only, never loaded by the app)
+- Pattern: `<subject>-reference.<ext>` — `chip-reference.png`, `icon-reference.png`.
+- Always the raw, unprocessed source material, kept exactly as obtained (watermark and
+  all, if it had one) so the provenance and the processing steps are both traceable —
+  the steps themselves belong in this file's dated history (e.g. "Approved next batch"
+  below), not in a checked-in script.
+- Never referenced from Java code — if something under `docs/` is being loaded at
+  runtime, it's in the wrong place.
+
+**Ad-hoc files (screenshots, one-off debug scratch code, exploratory output)**
+- Never committed, never left loose in the repo root. A screenshot requested mid-session
+  for Claude to inspect belongs in the OS's own Pictures/Screenshots folder (or a scratch
+  temp dir), not this repository — if one lands in the repo root anyway, delete it
+  before committing rather than carving out a permanent home for it. `.gitignore` has a
+  `Screenshot*.png` pattern as a safety net, but treat that as a backstop, not
+  permission to leave them lying around.
+- Same for any throwaway debug `main()` class written to isolate a bug (e.g. rendering
+  something to a file to inspect it, or testing one JavaFX API in isolation) — delete it
+  once the investigation is done, before committing. It never had a place in the
+  project's actual structure to begin with.
+
+**Git**
+- Branches: `kebab-case`, short, describing the change itself, not the ticket/date
+  (`settings-panel-in-theme-style`).
+- Commit messages: imperative mood, capitalized, no trailing period, one line
+  summarizing *what* changed ("Add chip-based betting, per-hand wager stacks, win/lose
+  banner, window auto-fit"). Add a body only when the one-liner can't carry the *why*.
 
 ## Rules reference
 
@@ -101,6 +203,7 @@ hardcoded or entirely absent in the original:
 | Split eligibility | Equal *blackjack value*, not exact rank (`Hand.isPair()`) | Matches the original — a King and a Jack can be split together. |
 | Double down | Allowed on any first two cards, no total restriction | Matches the original. |
 | Shoe penetration | 50% | Matches the original's `cards/2 < pointer` reshuffle check. |
+| Insurance | Off | New side bet (not in the original at all) offered only when the dealer's up-card is an Ace and `insuranceAllowed()` is on — see "Approved next batch" item 8 below. |
 
 ## Correctness audit: what was wrong in the original, and how it's fixed here
 
@@ -156,7 +259,8 @@ the implementation against the rules above, not just against itself.
 
 - **Single seat only.** The original supported multiple players at one terminal table;
   `BlackjackTable` currently assumes exactly one `Player`.
-- **No insurance or surrender** side bets.
+- **No surrender** side bet. (Insurance *is* now supported — see "Approved next batch"
+  item 8 below — off by default via `GameRules.insuranceAllowed()`.)
 - **`GameRules` isn't exposed in the UI yet** — the setup screen always uses
   `GameRules.standard()`, even though every rule is already a constructor parameter.
 - **Windows-only packaging** — `pom.xml` hardcodes the `win` JavaFX classifier.
@@ -169,7 +273,10 @@ independent — **done and visually confirmed 2026-09-14**; **4 and 5 are done a
 visually confirmed 2026-09-16**, both evolved past their original spec through several
 rounds of feedback (see each item itself); 6 is the highest-risk item on this whole
 document, still open; 7 is a grab-bag to pick from opportunistically (one item done
-2026-09-16, see below).
+2026-09-16, see below). Items 8 and 9 weren't part of the original approved batch —
+each was requested and done in a later session (2026-09-17/18), added here rather than
+as their own section since this list is where the project's "what happened and why"
+history actually lives.
 
 1. ~~**Fix: the "Bet:" label is unreadable**~~ **Done.** Added a global
    `Label { -fx-text-fill: #f0f0f0; }` in `blackjack.css` rather than patching just that
@@ -258,12 +365,12 @@ document, still open; 7 is a grab-bag to pick from opportunistically (one item d
      popup.** `GameController.showRoundOutcomeBanner()` pops a scale+fade "WIN +N" /
      "LOST -N" ribbon (`winLoseBanner`) spanning the table width, centered vertically,
      driven by the round's total profit summed across every hand's `Settlement`
-     (handles split rounds correctly). A push (net zero) shows nothing. **Gotcha hit
-     while building this:** `Region`'s default max size is `Double.MAX_VALUE`, so an
-     unconstrained `VBox` dropped into a `StackPane` stretches to fill it completely —
-     the first version covered the whole window. Fixed by
-     `winLoseBanner.setMaxHeight(Region.USE_PREF_SIZE)`; remember this for any future
-     overlay added to `root`.
+     (handles split rounds correctly). **Gotcha hit while building this:** `Region`'s
+     default max size is `Double.MAX_VALUE`, so an unconstrained `VBox` dropped into a
+     `StackPane` stretches to fill it completely — the first version covered the whole
+     window. Fixed by `winLoseBanner.setMaxHeight(Region.USE_PREF_SIZE)`; remember this
+     for any future overlay added to `root`. *(Original behavior showed nothing on a
+     push — changed in item 8 below to always show, including "PUSH +0".)*
    - Hover/press visual feedback on chips and buttons (scale-up on hover, press-down on
      click) for tactile feel.
    - A small recent-rounds history strip (colored dots: green win, red loss, grey
@@ -284,6 +391,78 @@ document, still open; 7 is a grab-bag to pick from opportunistically (one item d
      explicit English text, fully in our own CSS. See the design-standard note this
      established, under "Notes for the next session working here".
 
+8. ~~**Insurance side bet**~~ **Done (2026-09-18).** A side bet, up to half the
+   original wager, offered only when the dealer's up-card is an Ace, paying 2:1 if the
+   dealer has blackjack — gated behind a new `GameRules.insuranceAllowed()` toggle
+   ("Offer insurance against a dealer Ace" checkbox in Game Settings), off by default.
+   - **Engine:** `BlackjackTable.startRound()` now defers the dealer-blackjack peek
+     specifically when the up-card is an Ace and the rule is on — new
+     `isInsurancePending()` / `maxInsuranceBet()` / `takeInsurance()` /
+     `declineInsurance()` API, resolved through a private `resolveInsuranceDecision()`
+     that folds back into the same `resolveDealerPeek()` the non-Ace / rule-off path
+     already used. A new `InsuranceSettlement` record (amount wagered, won, payout) is
+     exposed via `lastInsuranceSettlement()`, separate from `Settlement` since it
+     resolves independently of the main hand. Five new tests in `BlackjackTableTest`
+     (insurance off by default even on an Ace, only offered on an Ace not a ten, a win
+     pays 2:1, a decline costs nothing, a loss when the dealer has no blackjack) — engine
+     test count 23 → 28.
+   - **UI:** a new in-theme overlay (`buildInsuranceOverlay()`, same
+     `setup-overlay`/`setup-card` pattern as every other popup) appears 500ms after the
+     deal — long enough for the dealt-card fade-in to finish first — and shows a shrunk
+     (`scaleX`/`scaleY` 0.7) preview of the player's current hand via a second
+     `HandPane` instance, so the decision doesn't require looking behind the popup. The
+     insurance amount itself is fixed at the standard casino max (half the bet); no
+     adjustable-amount input was built, to avoid a bespoke widget for a rarely-varied
+     value.
+   - **Banner behavior, evolved through several rounds of feedback:** the round-outcome
+     banner (`showRoundOutcomeBanner()`) now *always* shows — including a "PUSH +0" case
+     that was previously silent (see the correction on item 7's banner bullet above). A
+     **won** insurance bet against a dealer blackjack shows one *combined*
+     "INSURANCE WIN +netProfit" banner instead of the usual WIN/LOST/PUSH one — main
+     hand profit and insurance profit summed together, e.g. bet 10 + insurance 5,
+     dealer blackjack, otherwise-losing hand: -10 main hand + 10 insurance profit =
+     "INSURANCE WIN +0". A **lost or declined** insurance bet gets no banner of its own
+     — just the existing round message text, which already mentions the result (e.g.
+     "Dealer wins — Insurance lost -5").
+
+9. ~~**Window/taskbar icon**~~ **Done (2026-09-18).** Two overlapping spade cards. Went
+   through three different implementations before landing on the current one — each
+   failure looked like success until actually checked pixel-by-pixel in a live
+   screenshot, which is why this entry is long:
+   - **v1 — rendered from `CardView` via `Node.snapshot()`.** Looked fine exported to a
+     PNG. As a real title bar icon: silent failure, OS default icon shown instead, no
+     exception anywhere. Root-caused via a from-scratch minimal repro (a bare
+     `Application` setting a manually-built `WritableImage` as `Stage.getIcons()`,
+     nothing else) that a plain `WritableImage` — even with soft/partial alpha edges —
+     works fine, but the exact same pixel values returned by `Node.snapshot()` don't.
+     **The fix, if this pattern is ever needed again:** copy the snapshot's pixels into
+     a fresh `WritableImage` via `PixelReader`/`PixelWriter` before handing it to
+     `Stage.getIcons()` — never return a `Node.snapshot()` result as a Stage icon
+     directly. Two more real gotchas surfaced along the way, worth remembering for any
+     future in-app-rendered icon: (1) Windows' native `.ico` format hard-caps icon
+     images at 256×256px — a bigger source silently fails the same way, no exception;
+     (2) JavaFX auto-applies the `.root` style class to whatever node is the actual
+     `Scene` root, so snapshotting a node that's also a scene root picks up
+     `blackjack.css`'s `.root` felt-green background unexpectedly — wrap the real
+     content in a bare `Group` as the Scene root instead.
+   - **v2 — the same rendered cards, size- and background-fixed.** Superseded before
+     shipping (see v3) — kept only as the "what actually root-caused the bug" story
+     above.
+   - **v3 — a real image, per explicit request.** The project owner uploaded a stock
+     photo of an Ace and Jack of spades. It had a `shutterstock.com · <id>` watermark
+     baked directly into the pixels near the bottom edge — confirmed, not inferred from
+     the filename — meaning it was an unlicensed preview download. Flagged this
+     explicitly and got confirmation of usage rights before proceeding (see "Naming &
+     file conventions" for where the two resulting files live: `docs/icon-reference.png`
+     is the untouched original, watermark included, for provenance;
+     `src/main/resources/.../ui/app-icon.png` is the processed, transparent-background,
+     watermark-cropped, 240×240 build artifact actually loaded). Processing was a
+     one-off Pillow script (not checked in, per convention): strip the watermark band,
+     chroma-key the flat gray background to transparent, crop to content, pad, resize.
+     `AppIcon` no longer renders anything itself — `AppIcon.load()` just decodes the PNG
+     resource, which sidesteps the whole `Node.snapshot()` problem above entirely (a
+     directly-decoded image is not a snapshot result).
+
 ## Roadmap: possible upgrades & features
 
 ### Near-term / low effort
@@ -300,7 +479,8 @@ document, still open; 7 is a grab-bag to pick from opportunistically (one item d
       rather than inventing rule variants the original never had; `Hand` would need a
       `SURRENDERED` status and `BlackjackTable` a `surrender()` action gated by a new
       `GameRules.surrenderAllowed` flag.
-- [ ] **Insurance** side-bet when the dealer shows an Ace.
+- [x] ~~**Insurance** side-bet when the dealer shows an Ace.~~ **Done (2026-09-18)** —
+      see "Approved next batch" item 8 above for the full story.
 - [ ] Rule-configurable re-split limits (e.g. "no re-splitting Aces") — currently any
       pair, Aces included, can be re-split up to `GameRules.maxSplitHands()`.
 - [ ] **Multiplayer** — multiple `Player` seats sharing one `Shoe`/`Dealer`. The
@@ -373,3 +553,13 @@ document, still open; 7 is a grab-bag to pick from opportunistically (one item d
   surfaced: RadioButton captions, like CheckBox, aren't `Label` nodes and need their own
   `.setup-card .radio-button` rule — the same class of gap CLAUDE.md already flagged for
   CheckBox, now fixed for both together.
+- **`javafx.scene.Node.snapshot()`'s returned `Image`, passed directly to
+  `Stage.getIcons()`, silently fails to become the Windows title bar/taskbar icon** — no
+  exception, the pixel data is provably correct, the OS just keeps showing its own
+  default icon instead. If a `Node.snapshot()` result ever needs to become a Stage icon
+  again, copy its pixels into a fresh `WritableImage` via `PixelReader`/`PixelWriter`
+  first — see "Approved next batch" item 9 for the full investigation and two more
+  related gotchas (the 256×256 `.ico` size cap, and `Scene` auto-applying `.root` CSS
+  to whatever node is the actual scene root). `AppIcon` itself no longer uses
+  `snapshot()` at all — it just loads a real PNG — so this is dormant unless something
+  in this codebase renders a JavaFX node to an image again.
