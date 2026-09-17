@@ -17,6 +17,7 @@ public final class BlackjackApp extends Application {
                 getClass().getResource("/io/github/davidefornari/blackjack/ui/blackjack.css").toExternalForm());
 
         stage.setTitle("Blackjack");
+        stage.getIcons().add(AppIcon.load());
         stage.setScene(scene);
         stage.setMinWidth(900);
         stage.setMinHeight(640);
