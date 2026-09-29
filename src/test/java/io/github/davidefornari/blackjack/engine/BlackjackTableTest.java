@@ -109,6 +109,51 @@ class BlackjackTableTest {
     }
 
     @Test
+    void aBlackjackOnAnOddWagerDropsThePartChipInsteadOfRoundingItUp() {
+        Player player = new Player("Ada", 1000);
+        // Same deal as above on a wager of 15: a true 3:2 profit is 22.5, so the house pays 22
+        // and the payout is 37. The old Math.round on a double ratio paid 38 — half a chip of
+        // the player's own money back, and a bankroll no longer divisible by the smallest chip.
+        Shoe shoe = fixedShoe(
+                c(Rank.ACE, Suit.CLUBS), c(Rank.NINE, Suit.SPADES),
+                c(Rank.KING, Suit.CLUBS), c(Rank.FIVE, Suit.SPADES),
+                c(Rank.TWO, Suit.CLUBS), c(Rank.TWO, Suit.SPADES),
+                c(Rank.TWO, Suit.HEARTS), c(Rank.TWO, Suit.DIAMONDS)
+        );
+        BlackjackTable table = new BlackjackTable(player, shoe, GameRules.standard());
+
+        table.startRound(15);
+        table.playDealerTurn();
+        List<Settlement> settlements = table.settle();
+
+        assertEquals(RoundOutcome.BLACKJACK_WIN, settlements.get(0).outcome());
+        assertEquals(37, settlements.get(0).payout());
+        assertEquals(1022, player.bankroll()); // 1000 - 15 staked + 37 returned
+    }
+
+    @Test
+    void theSixToFivePayoutRuleReturnsLessOnTheSameBlackjack() {
+        Player player = new Player("Ada", 1000);
+        // Identical deal to playerBlackjackPaysThreeToTwoWhenDealerHasNone, 6:5 instead of 3:2.
+        Shoe shoe = fixedShoe(
+                c(Rank.ACE, Suit.CLUBS), c(Rank.NINE, Suit.SPADES),
+                c(Rank.KING, Suit.CLUBS), c(Rank.FIVE, Suit.SPADES),
+                c(Rank.TWO, Suit.CLUBS), c(Rank.TWO, Suit.SPADES),
+                c(Rank.TWO, Suit.HEARTS), c(Rank.TWO, Suit.DIAMONDS)
+        );
+        GameRules sixToFive = new GameRules(6, 50, false, BlackjackPayout.SIX_TO_FIVE, true, 4, false);
+        BlackjackTable table = new BlackjackTable(player, shoe, sixToFive);
+
+        table.startRound(100);
+        table.playDealerTurn();
+        List<Settlement> settlements = table.settle();
+
+        assertEquals(RoundOutcome.BLACKJACK_WIN, settlements.get(0).outcome());
+        assertEquals(220, settlements.get(0).payout()); // stake back (100) + 6:5 profit (120), vs. 250 at 3:2
+        assertEquals(1120, player.bankroll());
+    }
+
+    @Test
     void bustingOnAHitEndsThePlayerTurnAndLosesTheBet() {
         Player player = new Player("Ada", 1000);
         // player: 10,9 = 19, hits into a 10 -> 29 bust. dealer up = 2 (no peek).
@@ -262,7 +307,7 @@ class BlackjackTableTest {
                 c(Rank.SEVEN, Suit.CLUBS), c(Rank.SIX, Suit.SPADES),
                 c(Rank.TWO, Suit.HEARTS)
         );
-        GameRules h17 = new GameRules(6, 50, true, 1.5, true, 4, false);
+        GameRules h17 = new GameRules(6, 50, true, BlackjackPayout.THREE_TO_TWO, true, 4, false);
         BlackjackTable table = new BlackjackTable(player, shoe, h17);
 
         table.startRound(100);
@@ -294,7 +339,7 @@ class BlackjackTableTest {
         GameRules standard = GameRules.standard();
         return new GameRules(
                 standard.deckCount(), standard.penetrationPercent(), standard.dealerHitsSoftSeventeen(),
-                standard.blackjackPayoutRatio(), standard.doubleAfterSplitAllowed(), standard.maxSplitHands(), true);
+                standard.blackjackPayout(), standard.doubleAfterSplitAllowed(), standard.maxSplitHands(), true);
     }
 
     @Test

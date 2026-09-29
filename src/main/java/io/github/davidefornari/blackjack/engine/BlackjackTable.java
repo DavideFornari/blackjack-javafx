@@ -321,7 +321,7 @@ public final class BlackjackTable {
                     payout = hand.wager();
                 } else {
                     outcome = RoundOutcome.BLACKJACK_WIN;
-                    payout = Math.round(hand.wager() * (1 + rules.blackjackPayoutRatio()));
+                    payout = hand.wager() + rules.blackjackPayout().profitOn(hand.wager());
                 }
             } else if (hand.isBust()) {
                 outcome = RoundOutcome.BUST;

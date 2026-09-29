@@ -34,8 +34,8 @@ exception thrown" proof that a visual change landed: the window icon work below 
 checks for two rounds while still being visibly broken. UI work is done when the project
 owner has *looked at the running window*, or when a screenshot has been checked pixel-by-pixel.
 
-**Last verified 2026-09-18:** `mvn test` 28/28 green; window confirmed visually by the owner
-across the insurance flow, the outcome banners and the new title-bar icon.
+**Last verified 2026-09-29:** `mvn test` 30/30 green; window confirmed visually by the owner
+after the settlement/bankroll fixes (deal-time banner, insurance affordability, table minimum).
 
 ## Architecture
 
@@ -169,6 +169,13 @@ Break these and something subtle fails, usually silently.
   needs re-deriving, not patching.
 - `Shoe`'s package-private `Shoe(List<Card>)` is a deterministic-testing seam only. Don't
   make it public; production code uses `new Shoe(deckCount, penetrationPercent)`.
+- **Money never touches `double`.** Payouts are integer arithmetic: `BlackjackPayout` holds the
+  ratio as a numerator/denominator pair and `profitOn()` floors, so a part-chip goes the house's
+  way. The `double` ratio it replaced was settled with `Math.round` and overpaid a natural on an
+  odd wager (15 → 22.5 profit → 23). Keep any future payout or side-bet maths integer too.
+- The table minimum is a *UI* concept, not an engine one: `Player.isBankrupt()` still means
+  zero, while `GameController.MINIMUM_BET` (the smallest chip) is what actually ends a session,
+  since a sub-chip bankroll can't be wagered. Both `settleRound()` and `onSitDown()` gate on it.
 - Insurance defers the dealer peek: on an Ace up-card with the rule on, `startRound()` stops
   before peeking and the round only resolves once `takeInsurance()`/`declineInsurance()` is
   called. Any caller must check `isInsurancePending()` *before* `isPlayerTurnComplete()` —
@@ -217,77 +224,52 @@ Break these and something subtle fails, usually silently.
 
 ## Known issues
 
-Nothing here is a hypothetical — each was confirmed by reading the code on 2026-09-18.
-
-### High impact, small effort — fix first
-
-1. **No outcome banner when the round ends at the deal.** `GameController.onDeal()` calls
-   `settleRound()` and discards its return value, so `showRoundOutcomeBanner(...)` never
-   fires. Every round decided before the player acts settles silently: a dealt natural (~4.8%
-   of hands) and a dealer natural peeked on a ten up-card. Regression from the 2026-09-18
-   banner refactor, which moved banner duties from `settleRound()` to its callers and updated
-   `afterPlayerAction()` and `afterInsuranceDecision()` but missed this third call site.
-   *Fix:* `showRoundOutcomeBanner(settleRound());` — one line.
-2. **"Take Insurance" throws when the bet consumed the whole bankroll.** `onTakeInsurance()`
-   passes `maxInsuranceBet()` straight to `BlackjackTable.takeInsurance()`, which throws
-   `IllegalArgumentException` when the amount exceeds the bankroll. Bet everything, get an Ace
-   up-card with insurance enabled, and the button throws inside the FX handler: stack trace to
-   stderr, overlay stays open, the click appears to do nothing. *Fix:* disable the take button
-   (or skip the offer) when `maxInsuranceBet() > player.bankroll()`.
-3. **Soft-lock when the bankroll falls to 1-4.** `Player.isBankrupt()` is `bankroll <= 0`, so
-   1-4 chips counts as a live game — but every chip button disables (would exceed bankroll),
-   Deal stays disabled, and "New Game" is only visible in ROUND_OVER/GAME_OVER. BETTING then
-   has no exit at all short of killing the window. Reachable via issue 4. *Fix:* end the
-   session when the bankroll can't cover the smallest chip, or always show New Game.
+Nothing here is a hypothetical — each was confirmed by reading the code on 2026-09-18, and
+the list was re-checked against the tree on 2026-09-29 when the first four were fixed.
 
 ### Medium impact, small-to-medium effort
 
-4. **3:2 rounds in the player's favour and knocks the bankroll off the chip lattice.**
-   `Math.round(wager * (1 + ratio))` on an odd multiple of 5 overpays half a chip (wager 15 →
-   37.5 → 38) and leaves a bankroll that can never be fully bet in 5-chips — the root cause of
-   issue 3. *Fix:* express the payout as a rational (3/2, 6/5) and floor, or keep money off
-   `double` entirely.
-5. **`RoundOutcome.WIN` is asserted nowhere.** The ordinary "player beats the dealer, paid
+1. **`RoundOutcome.WIN` is asserted nowhere.** The ordinary "player beats the dealer, paid
    2×" path — and the dealer-bust route that most often produces it — has zero test coverage,
    despite being the single most common winning outcome.
-6. **User-selectable rules are untested.** 6:5 payout, `doubleAfterSplitAllowed = false` and
-   `maxSplitHands` (re-splitting up to the cap) are all exposed in Game Settings and none is
-   covered by a test.
-7. **No `ShoeTest`.** Penetration maths, reshuffle resetting the counts, running-count
+2. **Two user-selectable rules are still untested.** `doubleAfterSplitAllowed = false` and
+   `maxSplitHands` (re-splitting up to the cap) are exposed in Game Settings and neither is
+   covered by a test. The 6:5 payout gained one on 2026-09-29.
+3. **No `ShoeTest`.** Penetration maths, reshuffle resetting the counts, running-count
    accumulation and exhaustion behaviour are all untested, and `Shoe` is where the subtlest
    engine arithmetic lives.
-8. **`refresh()` re-animates every card on every call.** `renderDealer()`/`renderPlayerHands()`
+4. **`refresh()` re-animates every card on every call.** `renderDealer()`/`renderPlayerHands()`
    rebuild their panes and call `animateIn()` unconditionally, so hitting re-fades the whole
    hand and even a chip click re-runs the table's fade-ins. Needs the render pass to animate
    only genuinely new cards.
 
 ### Low impact
 
-9. **Red Seven's running count starts at 0, not its conventional IRC.** Unbalanced systems
+5. **Red Seven's running count starts at 0, not its conventional IRC.** Unbalanced systems
    normally start at −2 per deck so the published thresholds line up; starting at 0 leaves the
    displayed count offset by +2 × decks. The per-card *tags* are correct (as claimed above) —
    it's the initial count convention that isn't. The enum's doc also says a full *shoe*
    finishes at +2; it's +2 *per deck*.
-10. **A round can outrun a nearly-spent shoe.** `needsShuffle()` is only consulted between
-    rounds, so 1 deck at 80% penetration (~10 cards left) plus a max-split round with several
-    hits can exhaust it mid-hand, hitting `draw()`'s defensive reshuffle — running counts reset
-    and cards already face-up on the table become dealable again.
-11. **The fixed test shoe explodes instead of failing clearly.** `Shoe(List<Card>)` sets
-    `deckCount = 0`, so `draw()`'s defensive `shuffle()` rebuilds an *empty* shoe and throws
-    `IndexOutOfBoundsException`. An under-provisioned test gets an opaque IOOBE instead of
-    "test shoe exhausted".
-12. **`Hand.cardsToString()` is dead code** — zero callers, a leftover from the console
-    original. Delete it.
-13. **`ChipView.breakdown()` silently drops what it can't represent** (7 → a single 5-chip).
-    Safe today because every wager is a sum of chips, but it will under-render the first time
-    an arbitrary amount reaches it. It's also `public` though only `stack()` uses it.
-14. **Missing-resource failures are opaque.** `ChipView.load()` and `AppIcon.load()` hand a
+6. **A round can outrun a nearly-spent shoe.** `needsShuffle()` is only consulted between
+   rounds, so 1 deck at 80% penetration (~10 cards left) plus a max-split round with several
+   hits can exhaust it mid-hand, hitting `draw()`'s defensive reshuffle — running counts reset
+   and cards already face-up on the table become dealable again.
+7. **The fixed test shoe explodes instead of failing clearly.** `Shoe(List<Card>)` sets
+   `deckCount = 0`, so `draw()`'s defensive `shuffle()` rebuilds an *empty* shoe and throws
+   `IndexOutOfBoundsException`. An under-provisioned test gets an opaque IOOBE instead of
+   "test shoe exhausted".
+8. **`Hand.cardsToString()` is dead code** — zero callers, a leftover from the console
+   original. Delete it.
+9. **`ChipView.breakdown()` silently drops what it can't represent** (7 → a single 5-chip).
+   Safe today because every wager is a sum of chips, but it will under-render the first time
+   an arbitrary amount reaches it. It's also `public` though only `stack()` uses it.
+10. **Missing-resource failures are opaque.** `ChipView.load()` and `AppIcon.load()` hand a
     possibly-null stream to `new Image(...)`; a renamed asset surfaces as an NPE — an
     `ExceptionInInitializerError` for `ChipView`'s static map — rather than naming the file.
-15. **`hand-wager-stack` has no CSS rule** despite being applied in `HandPane`.
-16. **No `.gitattributes`** — every commit warns `LF will be replaced by CRLF`, and line
+11. **`hand-wager-stack` has no CSS rule** despite being applied in `HandPane`.
+12. **No `.gitattributes`** — every commit warns `LF will be replaced by CRLF`, and line
     endings depend on who checked out. `* text=auto` fixes it.
-17. **`GameController` is 986 lines — 46% of the 2,161-line main source tree.** Every overlay
+13. **`GameController` is 1,013 lines — 46% of the 2,226-line main source tree.** Every overlay
     builder, render pass, animation and phase transition lives in one class. Splitting it is
     Large effort, hence its placement in the backlog rather than here.
 
@@ -296,19 +278,18 @@ Nothing here is a hypothetical — each was confirmed by reading the code on 202
 Ordered by value per unit of effort. Items marked ⟵ are pulled from the old roadmap.
 
 ### High impact, small effort
-- Fix known issues 1-3 above (banner regression, insurance affordability, soft-lock).
 - **Keyboard shortcuts** — H/S/D for hit, stand, double; Enter to deal. ⟵
 - **Remember the last bet** as the next round's default instead of clearing the chip pile. ⟵
-- **Let the player leave the table voluntarily** after any settled round, not only when
-  bankrupt — the original asked "vuoi giocare ancora?" after every hand. Also resolves the
-  escape half of issue 3. ⟵
+- **Let the player leave the table voluntarily** after any settled round, not only when the
+  bankroll drops under the table minimum — the original asked "vuoi giocare ancora?" after
+  every hand. ⟵
 - **Show the true count**, not just the running count — a running count alone isn't
-  actionable on a 6-deck shoe. Pairs with fixing issue 9.
+  actionable on a 6-deck shoe. Pairs with fixing issue 5.
 
 ### High impact, medium effort
-- **Close the test gaps** from issues 5-7: a plain `WIN`/dealer-bust test, the three
+- **Close the test gaps** from issues 1-3: a plain `WIN`/dealer-bust test, the two remaining
   configurable rules, and a `ShoeTest`.
-- **Animate only new cards** (issue 8) — the single most visible piece of UI polish available,
+- **Animate only new cards** (issue 4) — the single most visible piece of UI polish available,
   since today every action re-fades the whole table.
 - **Visible deck + deal-from-deck animation.** ⟵ The highest-risk item on this list:
   coordinate-heavy and unverifiable from tests. Render a face-down stack (3-5 overlapping
@@ -345,7 +326,7 @@ Ordered by value per unit of effort. Items marked ⟵ are pulled from the old ro
   need to loop over players instead of assuming one.
 
 ### Large effort / structural
-- **Split `GameController`** (issue 17) — extract the overlay builders and the render pass at
+- **Split `GameController`** (issue 13) — extract the overlay builders and the render pass at
   minimum. Do this before the class grows again, not as a standalone refactor sprint.
 - **Move to FXML + CSS** if the UI grows much further ⟵ — skipped so far because hand-authored
   `fx:id` wiring couldn't be verified without running it, and the single-file scene graph is
@@ -386,3 +367,13 @@ gotchas**; this is the "what happened when" record.
   arrived with a `shutterstock.com · <id>` watermark baked into the pixels; the owner confirmed
   usage rights before it was cropped out and committed. Same day: naming conventions written
   down, and this full audit.
+- **2026-09-29** — The audit's four "fix first" defects, in one commit. The deal-time banner
+  regression (one missed call site); "Take Insurance" disabled, with the decline relabelled
+  "Continue" and the reason spelled out, when the bet left too little to cover the side bet;
+  `MINIMUM_BET` ending the session — and gating Sit Down — once the bankroll can't cover the
+  smallest chip, closing the 1-4 chip soft-lock; and `BlackjackPayout` replacing the `double`
+  payout ratio so naturals floor instead of rounding up. Tests 28 → 30. Flooring only *reduces*
+  off-lattice bankrolls — 3:2 on an odd wager is inherently a part-chip — so `MINIMUM_BET`, not
+  the payout fix, is what actually prevents the dead end. Deliberately *not* done: adding "New
+  Game" to the betting controls as a second escape hatch, since the session-end fix closes the
+  dead end on its own and the button would be visible every round.
