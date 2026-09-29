@@ -1,5 +1,6 @@
 package io.github.davidefornari.blackjack.ui;
 
+import io.github.davidefornari.blackjack.engine.BlackjackPayout;
 import io.github.davidefornari.blackjack.engine.BlackjackTable;
 import io.github.davidefornari.blackjack.engine.Card;
 import io.github.davidefornari.blackjack.engine.CountingSystem;
@@ -60,6 +61,13 @@ public final class GameController {
 
     private static final long DEFAULT_BANKROLL = 1000;
     private static final long[] CHIP_DENOMINATIONS = {5, 10, 25, 50, 100};
+    /**
+     * The table minimum, and the real end-of-session threshold: bets are placed in chips, so a
+     * bankroll below the smallest chip can't be wagered at all even though it isn't zero.
+     * {@link Player#isBankrupt()} only knows about zero, which left 1-4 chips looking like a
+     * live game with every chip button and Deal disabled and no way out of BETTING.
+     */
+    private static final long MINIMUM_BET = CHIP_DENOMINATIONS[0];
 
     private final StackPane root = new StackPane();
     private final VBox setupOverlay;
@@ -118,6 +126,8 @@ public final class GameController {
 
     private final Label insuranceMessageLabel = new Label();
     private final HandPane insuranceHandPreview = new HandPane();
+    private final Button takeInsuranceButton = new Button("Take Insurance");
+    private final Button declineInsuranceButton = new Button("No Thanks");
     private PauseTransition insuranceDelay;
 
     private Phase phase = Phase.SETUP;
@@ -365,7 +375,7 @@ public final class GameController {
         deckCombo.getSelectionModel().select(Integer.valueOf(pendingRules.deckCount()));
         (pendingRules.dealerHitsSoftSeventeen() ? hitRadio : standRadio).setSelected(true);
         doubleAfterSplitCheck.setSelected(pendingRules.doubleAfterSplitAllowed());
-        (isStandardPayout(pendingRules.blackjackPayoutRatio()) ? payout32Radio : payout65Radio).setSelected(true);
+        (pendingRules.blackjackPayout() == BlackjackPayout.SIX_TO_FIVE ? payout65Radio : payout32Radio).setSelected(true);
         penetrationSlider.setValue(pendingRules.penetrationPercent());
         penetrationValueLabel.setText(pendingRules.penetrationPercent() + "%");
         maxSplitCombo.getSelectionModel().select(Integer.valueOf(pendingRules.maxSplitHands()));
@@ -385,7 +395,7 @@ public final class GameController {
                 deckCombo.getValue(),
                 (int) Math.round(penetrationSlider.getValue()),
                 hitRadio.isSelected(),
-                payout32Radio.isSelected() ? 1.5 : 1.2,
+                payout65Radio.isSelected() ? BlackjackPayout.SIX_TO_FIVE : BlackjackPayout.THREE_TO_TWO,
                 doubleAfterSplitCheck.isSelected(),
                 maxSplitCombo.getValue(),
                 insuranceAllowedCheck.isSelected());
@@ -393,14 +403,10 @@ public final class GameController {
         hideGameSettingsOverlay();
     }
 
-    private boolean isStandardPayout(double ratio) {
-        return Math.abs(ratio - 1.5) < 0.01;
-    }
-
     private String describeRules(GameRules rules) {
         return rules.deckCount() + " decks, "
                 + (rules.dealerHitsSoftSeventeen() ? "H17" : "S17") + ", "
-                + (isStandardPayout(rules.blackjackPayoutRatio()) ? "3:2" : "6:5") + ", DAS "
+                + rules.blackjackPayout().displayName() + ", DAS "
                 + (rules.doubleAfterSplitAllowed() ? "on" : "off") + ", "
                 + rules.penetrationPercent() + "% penetration, max "
                 + rules.maxSplitHands() + " splits, insurance "
@@ -426,14 +432,12 @@ public final class GameController {
         insuranceHandPreview.setScaleX(0.7);
         insuranceHandPreview.setScaleY(0.7);
 
-        Button takeButton = new Button("Take Insurance");
-        takeButton.getStyleClass().add("primary-button");
-        takeButton.setOnAction(e -> onTakeInsurance());
+        takeInsuranceButton.getStyleClass().add("primary-button");
+        takeInsuranceButton.setOnAction(e -> onTakeInsurance());
 
-        Button declineButton = new Button("No Thanks");
-        declineButton.setOnAction(e -> onDeclineInsurance());
+        declineInsuranceButton.setOnAction(e -> onDeclineInsurance());
 
-        HBox buttonRow = new HBox(12, declineButton, takeButton);
+        HBox buttonRow = new HBox(12, declineInsuranceButton, takeInsuranceButton);
         buttonRow.setAlignment(Pos.CENTER);
 
         VBox card = new VBox(16, title, insuranceHandPreview, insuranceMessageLabel, buttonRow);
@@ -462,9 +466,18 @@ public final class GameController {
 
     private void showInsuranceOverlay() {
         long cost = table.maxInsuranceBet();
-        insuranceMessageLabel.setText(
-                "The dealer is showing an Ace. Insure your hand for " + cost
-                        + " chips against a dealer blackjack? It pays 2:1 if the dealer has one.");
+        // A bet that took the whole bankroll leaves nothing to pay the side bet with, and
+        // takeInsurance() throws on that — thrown inside an FX handler it only reaches stderr,
+        // so the button would just look dead. Offer the decline as the only way on instead.
+        boolean affordable = cost > 0 && cost <= player.bankroll();
+        takeInsuranceButton.setDisable(!affordable);
+        declineInsuranceButton.setText(affordable ? "No Thanks" : "Continue");
+        insuranceMessageLabel.setText(affordable
+                ? "The dealer is showing an Ace. Insure your hand for " + cost
+                        + " chips against a dealer blackjack? It pays 2:1 if the dealer has one."
+                : "The dealer is showing an Ace, but insuring this hand costs " + cost
+                        + " chips and your bet left you only " + player.bankroll()
+                        + ". You'll have to play it uninsured.");
 
         Hand hand = player.firstHand();
         List<CardView> views = new ArrayList<>();
@@ -615,8 +628,10 @@ public final class GameController {
 
     private void onSitDown() {
         Long bankroll = parsePositiveLong(bankrollField.getText());
-        if (bankroll == null) {
-            setupErrorLabel.setText("Enter a starting bankroll greater than zero.");
+        // Anything under one chip can't be bet, so it would seat the player straight into the
+        // dead end that MINIMUM_BET exists to prevent at the other end of the session.
+        if (bankroll == null || bankroll < MINIMUM_BET) {
+            setupErrorLabel.setText("Enter a starting bankroll of at least " + MINIMUM_BET + " chips.");
             return;
         }
         String name = nameField.getText() == null || nameField.getText().isBlank()
@@ -649,7 +664,9 @@ public final class GameController {
             return;
         }
         if (table.isPlayerTurnComplete()) {
-            settleRound();
+            // Decided at the deal — a natural, or a dealer natural peeked on a ten up-card.
+            // The banner is this call site's job too, not just afterPlayerAction()'s.
+            showRoundOutcomeBanner(settleRound());
         } else {
             phase = Phase.PLAYER_TURN;
         }
@@ -707,8 +724,8 @@ public final class GameController {
 
     /**
      * Resolves the dealer's turn and every player hand, advances the phase (ROUND_OVER, or
-     * GAME_OVER if the bet just made cleared the bankroll), and returns the main hand(s)'
-     * total profit. Doesn't show a banner itself — callers decide that, since a win against
+     * GAME_OVER once what's left can't cover {@link #MINIMUM_BET}), and returns the main
+     * hand(s)' total profit. Doesn't show a banner itself — callers decide that, since a win against
      * a dealer blackjack the player insured needs its profit folded into a single combined
      * "INSURANCE WIN" banner instead of its own {@link #showRoundOutcomeBanner}.
      */
@@ -722,8 +739,13 @@ public final class GameController {
             totalProfit += s.payout() - s.hand().wager();
         }
         lastSettlements = byHand;
-        phase = player.isBankrupt() ? Phase.GAME_OVER : Phase.ROUND_OVER;
+        phase = canCoverMinimumBet() ? Phase.ROUND_OVER : Phase.GAME_OVER;
         return totalProfit;
+    }
+
+    /** Whether the session can continue: the bankroll still covers one smallest chip. */
+    private boolean canCoverMinimumBet() {
+        return player.bankroll() >= MINIMUM_BET;
     }
 
     /** Pops up "WIN +N" / "LOST -N" / "PUSH +0" for the main hand(s) — always shown, so a push still gets a result. */
@@ -921,7 +943,12 @@ public final class GameController {
 
     private void renderMessage() {
         if (phase == Phase.GAME_OVER) {
-            messageLabel.setText("Out of chips — thanks for playing, " + player.name() + ".");
+            // GAME_OVER now also covers a non-zero bankroll too small to bet, so don't claim
+            // "out of chips" when there are visibly a few left on the status line.
+            messageLabel.setText(player.bankroll() > 0
+                    ? "Only " + player.bankroll() + " chips left — under the " + MINIMUM_BET
+                            + "-chip minimum. Thanks for playing, " + player.name() + "."
+                    : "Out of chips — thanks for playing, " + player.name() + ".");
         } else if (phase == Phase.ROUND_OVER) {
             messageLabel.setText(summarizeRound());
         } else if (phase == Phase.PLAYER_TURN) {
