@@ -1,0 +1,12 @@
+# Line endings are a property of the repo, not of whoever cloned it.
+#
+# `text=auto` normalizes every text file to LF in the repository. `eol=lf` also pins the
+# *working tree* to LF on every platform, which is what actually silences the
+# "LF will be replaced by CRLF" warnings — `text=auto` alone leaves checkout up to
+# core.autocrlf (set to true in this clone), so the conversion, and the warning, stay.
+# Java, Maven and every editor this project is used from handle LF fine.
+* text=auto eol=lf
+
+# Binary assets: never convert, never diff as text. `text=auto` already detects these,
+# but naming them keeps a stray byte pattern from ever being misread as text.
+*.png binary

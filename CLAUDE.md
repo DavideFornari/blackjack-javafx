@@ -95,7 +95,15 @@ is a backstop, not permission.
 
 **Git** — branches `kebab-case`, describing the change (`settings-panel-in-theme-style`).
 Commits: imperative, capitalized, no trailing period, one line for *what*; body only when the
-one-liner can't carry the *why*.
+one-liner can't carry the *why*. Anything substantial goes up as a branch and a PR (rebase and
+merge, to keep master's linear history) rather than straight onto master.
+
+**Line endings** — `.gitattributes` pins `* text=auto eol=lf`: LF in the repository *and* LF in
+the working tree, on every platform. The `eol=lf` half is the part that matters — `text=auto`
+alone leaves checkout to `core.autocrlf`, which is `true` in at least one clone here, so the
+conversion and its `LF will be replaced by CRLF` warning survive. Don't "simplify" it away. If
+a future file genuinely needs CRLF (none does today), give it its own rule rather than
+loosening the global one.
 
 ## Rules reference
 
@@ -267,9 +275,7 @@ the list was re-checked against the tree on 2026-09-29 when the first four were 
     possibly-null stream to `new Image(...)`; a renamed asset surfaces as an NPE — an
     `ExceptionInInitializerError` for `ChipView`'s static map — rather than naming the file.
 11. **`hand-wager-stack` has no CSS rule** despite being applied in `HandPane`.
-12. **No `.gitattributes`** — every commit warns `LF will be replaced by CRLF`, and line
-    endings depend on who checked out. `* text=auto` fixes it.
-13. **`GameController` is 1,013 lines — 46% of the 2,226-line main source tree.** Every overlay
+12. **`GameController` is 1,013 lines — 46% of the 2,226-line main source tree.** Every overlay
     builder, render pass, animation and phase transition lives in one class. Splitting it is
     Large effort, hence its placement in the backlog rather than here.
 
@@ -326,7 +332,7 @@ Ordered by value per unit of effort. Items marked ⟵ are pulled from the old ro
   need to loop over players instead of assuming one.
 
 ### Large effort / structural
-- **Split `GameController`** (issue 13) — extract the overlay builders and the render pass at
+- **Split `GameController`** (issue 12) — extract the overlay builders and the render pass at
   minimum. Do this before the class grows again, not as a standalone refactor sprint.
 - **Move to FXML + CSS** if the UI grows much further ⟵ — skipped so far because hand-authored
   `fx:id` wiring couldn't be verified without running it, and the single-file scene graph is
@@ -376,4 +382,9 @@ gotchas**; this is the "what happened when" record.
   off-lattice bankrolls — 3:2 on an odd wager is inherently a part-chip — so `MINIMUM_BET`, not
   the payout fix, is what actually prevents the dead end. Deliberately *not* done: adding "New
   Game" to the betting controls as a second escape hatch, since the session-end fix closes the
-  dead end on its own and the button would be visible every round.
+  dead end on its own and the button would be visible every round. Shipped as the repo's first
+  PR (#1, rebase-and-merge) — the previously linear, PR-free history was a solo-project artifact,
+  not a policy. Same day: `.gitattributes` added, ending the CRLF warnings. Every blob was
+  already LF, so the index needed no renormalizing; only the working tree was mixed, and fixing
+  that needed `git rm --cached -r . && git reset --hard`, since git sees a CRLF file and its LF
+  blob as identical and so `checkout`/`checkout-index` won't rewrite them.
