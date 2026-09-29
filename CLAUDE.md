@@ -316,7 +316,10 @@ Ordered by value per unit of effort. Items marked ⟵ are pulled from the old ro
 - **Table felt / card-back theme picker.** ⟵
 - **Session statistics** — hands played, win rate, biggest win. ⟵
 - **Cross-platform packaging** — drop the hardcoded `win` classifier for `os-maven-plugin` or
-  per-OS profiles. ⟵
+  per-OS profiles. ⟵ Lower-risk than it looks: `-Djavafx.platform=mac-aarch64` already resolves
+  correctly today, propagating to `javafx-controls`, `javafx-graphics` and `javafx-base` alike
+  (verified 2026-09-29), so the work is auto-detecting the value, not fixing resolution. Runtime
+  on a non-Windows box is still unverified — nobody has run the app there.
 - **Maven Wrapper** (`mvn -N wrapper:wrapper`) so contributors don't need Maven installed. ⟵
 
 ### Rules & gameplay depth (medium-to-large effort)
