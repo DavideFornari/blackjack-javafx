@@ -48,9 +48,9 @@ src/test/java/.../engine/
 
 `engine/`: `Card`/`Rank`/`Suit` (model) → `Hand` (cards + soft-Ace scoring) → `Shoe`
 (multi-deck, shuffle, penetration reshuffle, running counts for all four systems at once) →
-`Dealer`/`Player` → `GameRules` (house rules, a record) → `BlackjackTable` (one round: deal →
-optional insurance decision → player turns → dealer turn → settle) → `RoundOutcome`/
-`Settlement`/`InsuranceSettlement`.
+`Dealer`/`Player` → `GameRules` (house rules, a record; carries `BlackjackPayout`, the natural's
+payout as an exact ratio) → `BlackjackTable` (one round: deal → optional insurance decision →
+player turns → dealer turn → settle) → `RoundOutcome`/`Settlement`/`InsuranceSettlement`.
 
 `ui/`: `BlackjackApp` (entry point, loads the window icon via `AppIcon`) → `GameController`
 (owns the `BlackjackTable`, builds and refreshes the whole scene graph, all button wiring) →
@@ -62,9 +62,11 @@ optional insurance decision → player turns → dealer turn → settle) → `Ro
 `PascalCase` classes, one public class per file, filename matches. A reusable scene-graph
 component takes a `View`/`Pane` suffix naming what it *is* (`CardView`, `HandPane`,
 `ChipView`); a non-Node helper or data holder doesn't (`AppIcon`, `GameRules`). Immutable
-data carriers are `record`s named for the concept — no `Impl`/`Data`/`DTO` suffixes.
-Methods: `camelCase` verbs for actions (`startRound`, `takeInsurance`), `isX`/`hasX`/`canX`
-for booleans.
+data carriers are `record`s named for the concept — no `Impl`/`Data`/`DTO` suffixes. A closed
+set of variants is an `enum` named for the concept, holding its own behaviour and a
+`displayName()` for the UI rather than letting the UI switch on it (`CountingSystem.tagFor`,
+`BlackjackPayout.profitOn`). Methods: `camelCase` verbs for actions (`startRound`,
+`takeInsurance`), `isX`/`hasX`/`canX` for booleans.
 
 **Tests** — `<ClassUnderTest>Test`, same package. Method names are one descriptive
 `camelCase` sentence covering scenario *and* expected outcome, no `test` prefix
@@ -100,10 +102,13 @@ merge, to keep master's linear history) rather than straight onto master.
 
 **Line endings** — `.gitattributes` pins `* text=auto eol=lf`: LF in the repository *and* LF in
 the working tree, on every platform. The `eol=lf` half is the part that matters — `text=auto`
-alone leaves checkout to `core.autocrlf`, which is `true` in at least one clone here, so the
-conversion and its `LF will be replaced by CRLF` warning survive. Don't "simplify" it away. If
-a future file genuinely needs CRLF (none does today), give it its own rule rather than
-loosening the global one.
+alone leaves checkout to `core.autocrlf`, so the conversion and its `LF will be replaced by
+CRLF` warning survive wherever that is on. On the owner's Windows box it is `true` in the
+*system* gitconfig (`C:/Program Files/Git/etc/gitconfig`, put there by the Git for Windows
+installer) — not in this repo's `.git/config`, so don't go looking for it there, and don't
+unset it: it is the machine-wide default for every other repo, and `.gitattributes` already
+overrides it here. Don't "simplify" the `eol=lf` away. If a future file genuinely needs CRLF
+(none does today), give it its own rule rather than loosening the global one.
 
 ## Rules reference
 
@@ -125,7 +130,7 @@ the points that actually constrain this code are listed; general play is assumed
 |---|---|---|
 | Deck count | 6 | Original asked at runtime hinting "2 is standard"; 6 is the common real-shoe size. |
 | Dealer soft 17 | Stands (S17) | The original never modeled soft hands, so this is a new explicit default, not a port. |
-| Blackjack payout | 3:2 | Matches the original's `puntata * 5/2`. 6:5 selectable. |
+| Blackjack payout | 3:2 | Matches the original's `puntata * 5/2` — including its integer floor, now that `BlackjackPayout` keeps the maths off `double`. 6:5 selectable. |
 | Double after split | Allowed | Matches the original (no restriction there). |
 | Split eligibility | Equal *blackjack value*, not rank | Matches the original — K+J is splittable. |
 | Double down | Any first two cards | Matches the original. |
@@ -390,4 +395,9 @@ gotchas**; this is the "what happened when" record.
   not a policy. Same day: `.gitattributes` added, ending the CRLF warnings. Every blob was
   already LF, so the index needed no renormalizing; only the working tree was mixed, and fixing
   that needed `git rm --cached -r . && git reset --hard`, since git sees a CRLF file and its LF
-  blob as identical and so `checkout`/`checkout-index` won't rewrite them.
+  blob as identical and so `checkout`/`checkout-index` won't rewrite them. Also that day: the
+  README expanded from 35 to 164 lines with toolchain install, dependency, run and
+  troubleshooting sections, after verifying that `java -version` and the JDK Maven runs on can
+  differ (25 vs 21 on the owner's machine, so `mvn -v` is the check that matters), that the
+  packaged jar has no `Main-Class` at all, and that `-Djavafx.platform=<classifier>` resolves
+  cleanly for non-Windows natives.
