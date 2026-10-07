@@ -76,6 +76,12 @@ public enum CountingSystem {
         return displayName;
     }
 
+    /** The display name, so a plain {@code ComboBox} shows it without a converter. */
+    @Override
+    public String toString() {
+        return displayName;
+    }
+
     public abstract int tagFor(Card card);
 
     /** The running count of a freshly shuffled shoe: 0 for balanced systems. */

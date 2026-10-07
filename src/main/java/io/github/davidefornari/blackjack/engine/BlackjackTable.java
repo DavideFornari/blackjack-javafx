@@ -58,9 +58,6 @@ public final class BlackjackTable {
         return dealer;
     }
 
-    public GameRules rules() {
-        return rules;
-    }
 
     public int cardsRemainingInShoe() {
         return shoe.cardsRemaining();

@@ -42,7 +42,6 @@ import javafx.scene.layout.VBox;
 import javafx.scene.text.TextAlignment;
 import javafx.stage.Stage;
 import javafx.util.Duration;
-import javafx.util.StringConverter;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -67,8 +66,8 @@ public final class GameController {
     /**
      * The table minimum, and the real end-of-session threshold: bets are placed in chips, so a
      * bankroll below the smallest chip can't be wagered at all even though it isn't zero.
-     * {@link Player#isBankrupt()} only knows about zero, which left 1-4 chips looking like a
-     * live game with every chip button and Deal disabled and no way out of BETTING.
+     * Checking for zero alone left 1-4 chips looking like a live game with every chip button
+     * and Deal disabled and no way out of BETTING.
      */
     private static final long MINIMUM_BET = CHIP_DENOMINATIONS[0];
 
@@ -224,17 +223,6 @@ public final class GameController {
     private VBox buildSetupOverlay() {
         nameField.setPromptText("Your name");
         countingCombo.getSelectionModel().select(CountingSystem.HI_LO);
-        countingCombo.setConverter(new StringConverter<>() {
-            @Override
-            public String toString(CountingSystem system) {
-                return system == null ? "" : system.displayName();
-            }
-
-            @Override
-            public CountingSystem fromString(String string) {
-                return CountingSystem.HI_LO;
-            }
-        });
         setupErrorLabel.getStyleClass().add("error-label");
         showCountCheckBox.setSelected(false);
 
@@ -633,10 +621,10 @@ public final class GameController {
 
     private void wireActions() {
         dealButton.setOnAction(e -> onDeal());
-        hitButton.setOnAction(e -> onHit());
-        standButton.setOnAction(e -> onStand());
-        doubleButton.setOnAction(e -> onDouble());
-        splitButton.setOnAction(e -> onSplit());
+        hitButton.setOnAction(e -> { table.hit(); afterPlayerAction(); });
+        standButton.setOnAction(e -> { table.stand(); afterPlayerAction(); });
+        doubleButton.setOnAction(e -> { table.doubleDown(); afterPlayerAction(); });
+        splitButton.setOnAction(e -> { table.split(); afterPlayerAction(); });
         nextRoundButton.setOnAction(e -> onNextRound());
         leaveTableButton.setOnAction(e -> onLeaveTable());
         newGameButton.setOnAction(e -> onNewGame());
@@ -751,26 +739,6 @@ public final class GameController {
         return chips.stream().mapToLong(Long::longValue).sum();
     }
 
-    private void onHit() {
-        table.hit();
-        afterPlayerAction();
-    }
-
-    private void onStand() {
-        table.stand();
-        afterPlayerAction();
-    }
-
-    private void onDouble() {
-        table.doubleDown();
-        afterPlayerAction();
-    }
-
-    private void onSplit() {
-        table.split();
-        afterPlayerAction();
-    }
-
     private void afterPlayerAction() {
         if (table.isPlayerTurnComplete()) {
             showRoundOutcomeBanner(settleRound());
@@ -795,13 +763,8 @@ public final class GameController {
             totalProfit += s.payout() - s.hand().wager();
         }
         lastSettlements = byHand;
-        phase = canCoverMinimumBet() ? Phase.ROUND_OVER : Phase.GAME_OVER;
+        phase = player.bankroll() >= MINIMUM_BET ? Phase.ROUND_OVER : Phase.GAME_OVER;
         return totalProfit;
-    }
-
-    /** Whether the session can continue: the bankroll still covers one smallest chip. */
-    private boolean canCoverMinimumBet() {
-        return player.bankroll() >= MINIMUM_BET;
     }
 
     /** Pops up "WIN +N" / "LOST -N" / "PUSH +0" for the main hand(s) — always shown, so a push still gets a result. */

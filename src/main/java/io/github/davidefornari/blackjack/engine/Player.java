@@ -41,9 +41,6 @@ public final class Player {
         bankroll += amount;
     }
 
-    public boolean isBankrupt() {
-        return bankroll <= 0;
-    }
 
     /** Live, mutable — {@code BlackjackRound} appends hands here when the player splits. */
     public List<Hand> hands() {

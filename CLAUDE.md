@@ -197,8 +197,8 @@ Break these and something subtle fails, usually silently.
   ratio as a numerator/denominator pair and `profitOn()` floors, so a part-chip goes the house's
   way. The `double` ratio it replaced was settled with `Math.round` and overpaid a natural on an
   odd wager (15 → 22.5 profit → 23). Keep any future payout or side-bet maths integer too.
-- The table minimum is a *UI* concept, not an engine one: `Player.isBankrupt()` still means
-  zero, while `GameController.MINIMUM_BET` (the smallest chip) is what actually ends a session,
+- The table minimum is a *UI* concept, not an engine one: the engine has no bankrupt check,
+  and `GameController.MINIMUM_BET` (the smallest chip) is what actually ends a session,
   since a sub-chip bankroll can't be wagered. Both `settleRound()` and `onSitDown()` gate on it.
 - Insurance defers the dealer peek: on an Ace up-card with the rule on, `startRound()` stops
   before peeking and the round only resolves once `takeInsurance()`/`declineInsurance()` is
