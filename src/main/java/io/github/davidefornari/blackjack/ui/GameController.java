@@ -30,7 +30,9 @@ import javafx.scene.control.RadioButton;
 import javafx.scene.control.Slider;
 import javafx.scene.control.TextField;
 import javafx.scene.control.ToggleGroup;
+import javafx.scene.control.Tooltip;
 import javafx.scene.image.ImageView;
+import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
@@ -57,7 +59,8 @@ import java.util.Optional;
  */
 public final class GameController {
 
-    private enum Phase { SETUP, BETTING, AWAITING_INSURANCE, PLAYER_TURN, ROUND_OVER, GAME_OVER }
+    /** GAME_OVER: the bankroll fell under {@link #MINIMUM_BET}. CASHED_OUT: the player chose to leave. */
+    private enum Phase { SETUP, BETTING, AWAITING_INSURANCE, PLAYER_TURN, ROUND_OVER, GAME_OVER, CASHED_OUT }
 
     private static final long DEFAULT_BANKROLL = 1000;
     private static final long[] CHIP_DENOMINATIONS = {5, 10, 25, 50, 100};
@@ -71,7 +74,7 @@ public final class GameController {
 
     private final StackPane root = new StackPane();
     private final VBox setupOverlay;
-    private final VBox confirmNewGameOverlay;
+    private final VBox confirmOverlay;
     private final VBox gameSettingsOverlay;
     private final VBox insuranceOverlay;
     private final BorderPane tableLayout;
@@ -101,7 +104,13 @@ public final class GameController {
     private final Button splitButton = new Button("Split");
 
     private final Button nextRoundButton = new Button("Next Round");
+    private final Button leaveTableButton = new Button("Leave Table");
     private final Button newGameButton = new Button("New Game");
+
+    private final Label confirmTitleLabel = new Label();
+    private final Label confirmMessageLabel = new Label();
+    private final Button confirmActionButton = new Button();
+    private Runnable confirmAction = () -> { };
 
     private final TextField nameField = new TextField();
     private final TextField bankrollField = new TextField(String.valueOf(DEFAULT_BANKROLL));
@@ -134,13 +143,16 @@ public final class GameController {
     private BlackjackTable table;
     private Player player;
     private Map<Hand, Settlement> lastSettlements = Map.of();
+    /** The chips behind the last dealt bet, re-placed for the next round when still affordable. */
+    private List<Long> lastBetChips = List.of();
+    private long startingBankroll;
     private boolean showCardCount;
     private Stage stage;
     private GameRules pendingRules = GameRules.standard();
 
     public GameController() {
         setupOverlay = buildSetupOverlay();
-        confirmNewGameOverlay = buildConfirmNewGameOverlay();
+        confirmOverlay = buildConfirmOverlay();
         gameSettingsOverlay = buildGameSettingsOverlay();
         insuranceOverlay = buildInsuranceOverlay();
         tableLayout = buildTableLayout();
@@ -164,9 +176,14 @@ public final class GameController {
         // gameSettingsOverlay is opened from a button inside setupOverlay, so it must come
         // after it here to actually render on top of it.
         root.getChildren().addAll(
-                tableLayout, shoeInfoLabel, winLoseBanner, confirmNewGameOverlay, insuranceOverlay,
+                tableLayout, shoeInfoLabel, winLoseBanner, confirmOverlay, insuranceOverlay,
                 setupOverlay, gameSettingsOverlay);
         wireActions();
+        root.sceneProperty().addListener((obs, oldScene, scene) -> {
+            if (scene != null) {
+                scene.addEventFilter(KeyEvent.KEY_PRESSED, this::onKeyPressed);
+            }
+        });
         refresh();
     }
 
@@ -261,28 +278,28 @@ public final class GameController {
      * In-theme replacement for a plain {@link javafx.scene.control.Alert} confirmation —
      * reuses the same {@code setup-overlay}/{@code setup-card} look as the setup screen
      * instead of a default-styled system dialog, which looked out of place on this table
-     * and had its own contrast problems (see {@code openGameSettingsDialog()}).
+     * and had its own contrast problems (see {@code openGameSettingsDialog()}). Shared by
+     * every session-ending action; {@link #showConfirmOverlay} fills in the specifics.
      */
-    private VBox buildConfirmNewGameOverlay() {
-        Label title = new Label("Start New Game");
-        title.getStyleClass().add("setup-title");
+    private VBox buildConfirmOverlay() {
+        confirmTitleLabel.getStyleClass().add("setup-title");
 
-        Label message = new Label(
-                "Leave the table and start a new game? This resets your bankroll and ends the current session.");
-        message.setWrapText(true);
-        message.setTextAlignment(TextAlignment.CENTER);
+        confirmMessageLabel.setWrapText(true);
+        confirmMessageLabel.setTextAlignment(TextAlignment.CENTER);
 
-        Button confirmButton = new Button("Yes, Start New Game");
-        confirmButton.getStyleClass().add("primary-button");
-        confirmButton.setOnAction(e -> confirmNewGame());
+        confirmActionButton.getStyleClass().add("primary-button");
+        confirmActionButton.setOnAction(e -> {
+            hideConfirmOverlay();
+            confirmAction.run();
+        });
 
         Button cancelButton = new Button("Cancel");
-        cancelButton.setOnAction(e -> hideConfirmNewGameOverlay());
+        cancelButton.setOnAction(e -> hideConfirmOverlay());
 
-        HBox buttonRow = new HBox(12, cancelButton, confirmButton);
+        HBox buttonRow = new HBox(12, cancelButton, confirmActionButton);
         buttonRow.setAlignment(Pos.CENTER);
 
-        VBox card = new VBox(16, title, message, buttonRow);
+        VBox card = new VBox(16, confirmTitleLabel, confirmMessageLabel, buttonRow);
         card.setAlignment(Pos.CENTER);
         card.setPadding(new Insets(28));
         card.setMaxWidth(340);
@@ -296,20 +313,24 @@ public final class GameController {
         return overlay;
     }
 
-    private void showConfirmNewGameOverlay() {
-        confirmNewGameOverlay.setVisible(true);
-        confirmNewGameOverlay.setManaged(true);
+    private void showConfirmOverlay(String title, String message, String confirmText, Runnable onConfirm) {
+        confirmTitleLabel.setText(title);
+        confirmMessageLabel.setText(message);
+        confirmActionButton.setText(confirmText);
+        confirmAction = onConfirm;
+        confirmOverlay.setVisible(true);
+        confirmOverlay.setManaged(true);
     }
 
-    private void hideConfirmNewGameOverlay() {
-        confirmNewGameOverlay.setVisible(false);
-        confirmNewGameOverlay.setManaged(false);
+    private void hideConfirmOverlay() {
+        confirmOverlay.setVisible(false);
+        confirmOverlay.setManaged(false);
     }
 
     /**
      * Every field here is already a {@link GameRules} constructor parameter — this overlay
      * is purely UI, no engine changes. In-theme (reuses {@code setup-overlay}/{@code setup-card},
-     * same as {@link #buildConfirmNewGameOverlay()}) rather than a
+     * same as {@link #buildConfirmOverlay()}) rather than a
      * {@link javafx.scene.control.Dialog}: a first attempt at this exact panel used
      * {@code Dialog<GameRules>} and needed a caption-color
      * override to be readable — this version sidesteps that entirely by using our own CSS.
@@ -416,7 +437,7 @@ public final class GameController {
     /**
      * Paused mid-deal, on an Ace up-card only, when {@link GameRules#insuranceAllowed()}
      * is on — same in-theme {@code setup-overlay}/{@code setup-card} pattern as
-     * {@link #buildConfirmNewGameOverlay()} rather than a stock dialog. The insurance
+     * {@link #buildConfirmOverlay()} rather than a stock dialog. The insurance
      * amount itself is fixed at the standard casino max (half the original wager) rather
      * than an adjustable field, to avoid a bespoke bet-amount input.
      */
@@ -601,8 +622,9 @@ public final class GameController {
         // a table/player exist — without this they'd flash visible during SETUP, relying purely
         // on the overlay happening to cover them instead of actually being hidden.
         nextRoundButton.setVisible(false);
+        leaveTableButton.setVisible(false);
         newGameButton.setVisible(false);
-        HBox afterRoundRow = new HBox(10, nextRoundButton, newGameButton);
+        HBox afterRoundRow = new HBox(10, nextRoundButton, leaveTableButton, newGameButton);
         afterRoundRow.setAlignment(Pos.CENTER);
 
         VBox controls = new VBox(14, statusBar, bettingBox, actionRow, afterRoundRow);
@@ -619,7 +641,44 @@ public final class GameController {
         doubleButton.setOnAction(e -> onDouble());
         splitButton.setOnAction(e -> onSplit());
         nextRoundButton.setOnAction(e -> onNextRound());
+        leaveTableButton.setOnAction(e -> onLeaveTable());
         newGameButton.setOnAction(e -> onNewGame());
+
+        dealButton.setTooltip(new Tooltip("Enter"));
+        hitButton.setTooltip(new Tooltip("H"));
+        standButton.setTooltip(new Tooltip("S"));
+        doubleButton.setTooltip(new Tooltip("D"));
+        splitButton.setTooltip(new Tooltip("P"));
+        nextRoundButton.setTooltip(new Tooltip("Enter"));
+    }
+
+    /**
+     * Table shortcuts: H/S/D/P for hit, stand, double, split; Enter to deal or start the next
+     * round. Each just fires its button, so the button's own enabled state is the only rule.
+     * A scene-level filter, so it works whatever has focus — which is also why it stands down
+     * while any overlay is up, where the setup and settings text fields need those keys.
+     */
+    private void onKeyPressed(KeyEvent event) {
+        boolean overlayShowing = setupOverlay.isVisible() || gameSettingsOverlay.isVisible()
+                || confirmOverlay.isVisible() || insuranceOverlay.isVisible();
+        if (overlayShowing) {
+            return;
+        }
+        Button target = switch (event.getCode()) {
+            case H -> hitButton;
+            case S -> standButton;
+            case D -> doubleButton;
+            case P -> splitButton;
+            case ENTER -> phase == Phase.ROUND_OVER ? nextRoundButton : dealButton;
+            default -> null;
+        };
+        if (target == null) {
+            return;
+        }
+        event.consume();
+        if (target.isVisible() && !target.isDisabled()) {
+            target.fire();
+        }
     }
 
     // ------------------------------------------------------------------
@@ -638,6 +697,7 @@ public final class GameController {
                 ? "Player" : nameField.getText().trim();
 
         player = new Player(name, bankroll);
+        startingBankroll = bankroll;
         player.setPreferredCountingSystem(countingCombo.getValue());
         showCardCount = showCountCheckBox.isSelected();
         GameRules rules = pendingRules;
@@ -656,6 +716,7 @@ public final class GameController {
             return;
         }
         betErrorLabel.setText("");
+        lastBetChips = List.copyOf(placedChips);
         table.startRound(bet);
         if (table.isInsurancePending()) {
             phase = Phase.AWAITING_INSURANCE;
@@ -688,8 +749,12 @@ public final class GameController {
     }
 
     private long currentBetTotal() {
+        return sum(placedChips);
+    }
+
+    private static long sum(List<Long> chips) {
         long total = 0;
-        for (long chip : placedChips) {
+        for (long chip : chips) {
             total += chip;
         }
         return total;
@@ -792,24 +857,35 @@ public final class GameController {
         bannerAnimation.play();
     }
 
+    /** Re-places the last bet's chips, so repeating a bet is one click (or Enter); dropped if no longer affordable. */
     private void onNextRound() {
         lastSettlements = Map.of();
         placedChips.clear();
+        if (sum(lastBetChips) <= player.bankroll()) {
+            placedChips.addAll(lastBetChips);
+        }
         phase = Phase.BETTING;
         refresh();
     }
 
-    /** Confirms first — "New Game" resets the bankroll and ends the session, so a misclick shouldn't be able to lose it silently. */
-    private void onNewGame() {
-        showConfirmNewGameOverlay();
+    /** Confirms first — leaving ends the session, so a misclick next to "Next Round" shouldn't be able to. */
+    private void onLeaveTable() {
+        showConfirmOverlay("Cash Out?",
+                "Cash out with " + player.bankroll() + " chips and end this session?",
+                "Yes, Cash Out",
+                () -> {
+                    phase = Phase.CASHED_OUT;
+                    refresh();
+                });
     }
 
-    private void confirmNewGame() {
-        hideConfirmNewGameOverlay();
+    /** Only offered once the session is over (out of chips, or cashed out), so there's nothing left to confirm. */
+    private void onNewGame() {
         phase = Phase.SETUP;
         table = null;
         player = null;
         lastSettlements = Map.of();
+        lastBetChips = List.of();
         placedChips.clear();
         refresh();
     }
@@ -844,7 +920,7 @@ public final class GameController {
         boolean betting = phase == Phase.BETTING;
         boolean playerTurn = phase == Phase.PLAYER_TURN;
         boolean roundOver = phase == Phase.ROUND_OVER;
-        boolean gameOver = phase == Phase.GAME_OVER;
+        boolean sessionOver = phase == Phase.GAME_OVER || phase == Phase.CASHED_OUT;
 
         long betTotal = currentBetTotal();
         for (long denomination : CHIP_DENOMINATIONS) {
@@ -868,8 +944,10 @@ public final class GameController {
 
         nextRoundButton.setDisable(!roundOver);
         nextRoundButton.setVisible(roundOver);
-        newGameButton.setVisible(roundOver || gameOver);
-        newGameButton.setDisable(!(roundOver || gameOver));
+        leaveTableButton.setDisable(!roundOver);
+        leaveTableButton.setVisible(roundOver);
+        newGameButton.setVisible(sessionOver);
+        newGameButton.setDisable(!sessionOver);
 
         growToFitContent();
     }
@@ -942,7 +1020,12 @@ public final class GameController {
     }
 
     private void renderMessage() {
-        if (phase == Phase.GAME_OVER) {
+        if (phase == Phase.CASHED_OUT) {
+            long net = player.bankroll() - startingBankroll;
+            String result = net > 0 ? "up " + net : net < 0 ? "down " + -net : "breaking even";
+            messageLabel.setText("Cashed out with " + player.bankroll() + " chips, " + result
+                    + ". Thanks for playing, " + player.name() + ".");
+        } else if (phase == Phase.GAME_OVER) {
             // GAME_OVER now also covers a non-zero bankroll too small to bet, so don't claim
             // "out of chips" when there are visibly a few left on the status line.
             messageLabel.setText(player.bankroll() > 0
@@ -955,6 +1038,8 @@ public final class GameController {
             messageLabel.setText("Your move");
         } else if (phase == Phase.AWAITING_INSURANCE) {
             messageLabel.setText("Insurance?");
+        } else if (!lastBetChips.isEmpty() && placedChips.equals(lastBetChips)) {
+            messageLabel.setText("Same bet as last round — Deal, or change it");
         } else {
             messageLabel.setText("Place your bet");
         }

@@ -104,13 +104,22 @@ it grows to fit dealt cards, wager stacks and split hands.
 `Main-Class`, and the JavaFX native modules aren't bundled either. `mvn javafx:run` is the
 supported way to launch. A self-contained installer via `jpackage` is on the backlog.
 
+### Keyboard shortcuts
+
+| Key | Action |
+|---|---|
+| `Enter` | Deal; after a round, start the next one |
+| `H` / `S` / `D` / `P` | Hit / Stand / Double / Split |
+
+Your last bet is placed again automatically at the start of each round, so `Enter` repeats it.
+
 ## Running the tests
 
 ```bash
 mvn test
 ```
 
-30 JUnit 5 tests covering the engine. They need **no JavaFX runtime and no display**, because
+42 JUnit 5 tests covering the engine. They need **no JavaFX runtime and no display**, because
 the `engine` package has zero JavaFX dependency — so they run fine over SSH, in a container,
 or in CI without a virtual framebuffer.
 
@@ -126,8 +135,9 @@ mvn javafx:run -Djavafx.platform=mac-aarch64
 Valid values: `win`, `win-x86`, `mac`, `mac-aarch64`, `linux`, `linux-aarch64`.
 
 The override resolves correctly — it propagates to `javafx-controls`, `javafx-graphics` and
-`javafx-base` alike — but the app has only ever been *run* on Windows, so treat non-Windows
-as untested rather than broken. Replacing the hardcoded classifier with `os-maven-plugin` or
+`javafx-base` alike. On Linux the app has been launched and driven under a virtual display
+(Xvfb), but nobody has played it on a real macOS or Linux desktop yet, so treat those as
+lightly tested rather than broken. Replacing the hardcoded classifier with `os-maven-plugin` or
 per-OS profiles, so this works with no flag, is on the backlog.
 
 Note that `mvn test` needs no override on any platform, since the engine tests never touch

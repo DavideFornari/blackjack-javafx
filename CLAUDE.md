@@ -34,8 +34,10 @@ exception thrown" proof that a visual change landed: the window icon work below 
 checks for two rounds while still being visibly broken. UI work is done when the project
 owner has *looked at the running window*, or when a screenshot has been checked pixel-by-pixel.
 
-**Last verified 2026-09-29:** `mvn test` 30/30 green; window confirmed visually by the owner
-after the settlement/bankroll fixes (deal-time banner, insurance affordability, table minimum).
+**Last verified 2026-10-07:** `mvn test` 42/42 green. The keyboard shortcuts, remembered bet
+and Leave Table flow were driven under Xvfb on Linux (`-Djavafx.platform=linux`) with
+synthetic key events and checked from scene snapshots — **not yet looked at by the owner** in
+the real window. Last owner-confirmed window: 2026-09-29, after the settlement/bankroll fixes.
 
 ## Architecture
 
@@ -53,7 +55,8 @@ payout as an exact ratio) → `BlackjackTable` (one round: deal → optional ins
 player turns → dealer turn → settle) → `RoundOutcome`/`Settlement`/`InsuranceSettlement`.
 
 `ui/`: `BlackjackApp` (entry point, loads the window icon via `AppIcon`) → `GameController`
-(owns the `BlackjackTable`, builds and refreshes the whole scene graph, all button wiring) →
+(owns the `BlackjackTable`, builds and refreshes the whole scene graph, all button and keyboard
+wiring) →
 `CardView`/`HandPane`/`ChipView` (reusable view components).
 
 ## Naming & file conventions
@@ -181,7 +184,15 @@ Break these and something subtle fails, usually silently.
   fixed-order test `Shoe` depends on that exact order — change it and every test's card list
   needs re-deriving, not patching.
 - `Shoe`'s package-private `Shoe(List<Card>)` is a deterministic-testing seam only. Don't
-  make it public; production code uses `new Shoe(deckCount, penetrationPercent)`.
+  make it public; production code uses `new Shoe(deckCount, penetrationPercent)`. Running it
+  dry throws `IllegalStateException("Fixed test shoe exhausted…")` — supply more cards.
+- `BlackjackTable.startRound()` calls `Shoe.beginRound()` after any penetration reshuffle. That
+  call is what tells the shoe which cards are on the table: if a round outruns the shoe, `draw()`
+  reshuffles the discards only, keeping those cards out of the new shoe and in the running
+  counts. A second caller dealing from a `Shoe` must make the same call or a mid-round reshuffle
+  can re-deal visible cards.
+- Running counts start at `CountingSystem.initialRunningCount(deckCount)`, not 0 — Red Seven
+  starts at −2 per deck. Anything resetting or displaying counts goes through that.
 - **Money never touches `double`.** Payouts are integer arithmetic: `BlackjackPayout` holds the
   ratio as a numerator/denominator pair and `profitOn()` floors, so a part-chip goes the house's
   way. The `double` ratio it replaced was settled with `Math.round` and overpaid a natural on an
@@ -224,6 +235,15 @@ Break these and something subtle fails, usually silently.
   `Group` as the scene root instead. Dormant while `AppIcon` just decodes a PNG.
 - The status line moved from a top bar to `.status-bar` inside `buildControlsArea()` on
   request (2026-09-16); there is no `layout.setTop(...)`. Deliberate, not an oversight.
+- **Keyboard shortcuts are a scene-level `KEY_PRESSED` filter** (`onKeyPressed`), installed when
+  `root` joins a scene — a filter rather than a handler on `root`, because when nothing has
+  focus key events go to the `Scene` and never reach `root`. Each key just `fire()`s its
+  button, so the button's disabled state stays the single source of truth. It does nothing
+  while any overlay is visible, so the setup and settings text fields keep their keys; a new
+  overlay must be added to that check.
+- The single confirmation overlay is shared: `showConfirmOverlay(title, message, confirmText,
+  action)`. The `setup-title` font truncates past ~10 characters at the card's 340px width, so
+  keep confirm titles short ("Cash Out?" — "Leave the Table" rendered as "Leave the T...").
 
 **Assets**
 - Chip denominations map **white=5, red=10, blue=25, green=50, black=100** (the reference
@@ -238,69 +258,43 @@ Break these and something subtle fails, usually silently.
 ## Known issues
 
 Nothing here is a hypothetical — each was confirmed by reading the code on 2026-09-18, and
-the list was re-checked against the tree on 2026-09-29 when the first four were fixed.
+the list was re-checked against the tree on 2026-10-07, when the test gaps and the shoe and
+counting defects were fixed (see **Project history**).
 
 ### Medium impact, small-to-medium effort
 
-1. **`RoundOutcome.WIN` is asserted nowhere.** The ordinary "player beats the dealer, paid
-   2×" path — and the dealer-bust route that most often produces it — has zero test coverage,
-   despite being the single most common winning outcome.
-2. **Two user-selectable rules are still untested.** `doubleAfterSplitAllowed = false` and
-   `maxSplitHands` (re-splitting up to the cap) are exposed in Game Settings and neither is
-   covered by a test. The 6:5 payout gained one on 2026-09-29.
-3. **No `ShoeTest`.** Penetration maths, reshuffle resetting the counts, running-count
-   accumulation and exhaustion behaviour are all untested, and `Shoe` is where the subtlest
-   engine arithmetic lives.
-4. **`refresh()` re-animates every card on every call.** `renderDealer()`/`renderPlayerHands()`
+1. **`refresh()` re-animates every card on every call.** `renderDealer()`/`renderPlayerHands()`
    rebuild their panes and call `animateIn()` unconditionally, so hitting re-fades the whole
    hand and even a chip click re-runs the table's fade-ins. Needs the render pass to animate
    only genuinely new cards.
 
 ### Low impact
 
-5. **Red Seven's running count starts at 0, not its conventional IRC.** Unbalanced systems
-   normally start at −2 per deck so the published thresholds line up; starting at 0 leaves the
-   displayed count offset by +2 × decks. The per-card *tags* are correct (as claimed above) —
-   it's the initial count convention that isn't. The enum's doc also says a full *shoe*
-   finishes at +2; it's +2 *per deck*.
-6. **A round can outrun a nearly-spent shoe.** `needsShuffle()` is only consulted between
-   rounds, so 1 deck at 80% penetration (~10 cards left) plus a max-split round with several
-   hits can exhaust it mid-hand, hitting `draw()`'s defensive reshuffle — running counts reset
-   and cards already face-up on the table become dealable again.
-7. **The fixed test shoe explodes instead of failing clearly.** `Shoe(List<Card>)` sets
-   `deckCount = 0`, so `draw()`'s defensive `shuffle()` rebuilds an *empty* shoe and throws
-   `IndexOutOfBoundsException`. An under-provisioned test gets an opaque IOOBE instead of
-   "test shoe exhausted".
-8. **`Hand.cardsToString()` is dead code** — zero callers, a leftover from the console
-   original. Delete it.
-9. **`ChipView.breakdown()` silently drops what it can't represent** (7 → a single 5-chip).
+2. **`ChipView.breakdown()` silently drops what it can't represent** (7 → a single 5-chip).
    Safe today because every wager is a sum of chips, but it will under-render the first time
    an arbitrary amount reaches it. It's also `public` though only `stack()` uses it.
-10. **Missing-resource failures are opaque.** `ChipView.load()` and `AppIcon.load()` hand a
-    possibly-null stream to `new Image(...)`; a renamed asset surfaces as an NPE — an
-    `ExceptionInInitializerError` for `ChipView`'s static map — rather than naming the file.
-11. **`hand-wager-stack` has no CSS rule** despite being applied in `HandPane`.
-12. **`GameController` is 1,013 lines — 46% of the 2,226-line main source tree.** Every overlay
-    builder, render pass, animation and phase transition lives in one class. Splitting it is
-    Large effort, hence its placement in the backlog rather than here.
+3. **Missing-resource failures are opaque.** `ChipView.load()` and `AppIcon.load()` hand a
+   possibly-null stream to `new Image(...)`; a renamed asset surfaces as an NPE — an
+   `ExceptionInInitializerError` for `ChipView`'s static map — rather than naming the file.
+4. **`hand-wager-stack` has no CSS rule** despite being applied in `HandPane`.
+5. **`GameController` is 1,098 lines — 47% of the 2,351-line main source tree.** Every overlay
+   builder, render pass, animation and phase transition lives in one class. Splitting it is
+   Large effort, hence its placement in the backlog rather than here.
+6. **After "New Game", the setup form sits over the previous session's table.** `refresh()`
+   returns early in SETUP, so the last hands and message stay rendered (dimmed) behind the
+   overlay. Cosmetic; noticed while checking the 2026-10-07 screenshots.
 
 ## Improvement backlog
 
 Ordered by value per unit of effort. Items marked ⟵ are pulled from the old roadmap.
 
 ### High impact, small effort
-- **Keyboard shortcuts** — H/S/D for hit, stand, double; Enter to deal. ⟵
-- **Remember the last bet** as the next round's default instead of clearing the chip pile. ⟵
-- **Let the player leave the table voluntarily** after any settled round, not only when the
-  bankroll drops under the table minimum — the original asked "vuoi giocare ancora?" after
-  every hand. ⟵
 - **Show the true count**, not just the running count — a running count alone isn't
-  actionable on a 6-deck shoe. Pairs with fixing issue 5.
+  actionable on a 6-deck shoe. Red Seven's initial count is now correct, so the running counts
+  this would divide are sound.
 
 ### High impact, medium effort
-- **Close the test gaps** from issues 1-3: a plain `WIN`/dealer-bust test, the two remaining
-  configurable rules, and a `ShoeTest`.
-- **Animate only new cards** (issue 4) — the single most visible piece of UI polish available,
+- **Animate only new cards** (issue 1) — the single most visible piece of UI polish available,
   since today every action re-fades the whole table.
 - **Visible deck + deal-from-deck animation.** ⟵ The highest-risk item on this list:
   coordinate-heavy and unverifiable from tests. Render a face-down stack (3-5 overlapping
@@ -340,7 +334,7 @@ Ordered by value per unit of effort. Items marked ⟵ are pulled from the old ro
   need to loop over players instead of assuming one.
 
 ### Large effort / structural
-- **Split `GameController`** (issue 12) — extract the overlay builders and the render pass at
+- **Split `GameController`** (issue 5) — extract the overlay builders and the render pass at
   minimum. Do this before the class grows again, not as a standalone refactor sprint.
 - **Move to FXML + CSS** if the UI grows much further ⟵ — skipped so far because hand-authored
   `fx:id` wiring couldn't be verified without running it, and the single-file scene graph is
@@ -349,7 +343,8 @@ Ordered by value per unit of effort. Items marked ⟵ are pulled from the old ro
 - **Persist bankroll/stats across restarts.** ⟵
 - **Externalize UI strings** — everything is hardcoded English today.
 - **Headless UI tests** (TestFX) — the insurance flow, banners and overlays are verified only
-  by eye, which is why the verification standard above exists.
+  by eye, which is why the verification standard above exists. Xvfb works in a Linux
+  container with `-Djavafx.platform=linux`, so a TestFX suite could run in CI.
 
 ## Project history
 
@@ -401,3 +396,17 @@ gotchas**; this is the "what happened when" record.
   differ (25 vs 21 on the owner's machine, so `mvn -v` is the check that matters), that the
   packaged jar has no `Main-Class` at all, and that `-Djavafx.platform=<classifier>` resolves
   cleanly for non-Windows natives.
+- **2026-10-07** — Engine: closed the test gaps (plain `WIN`, dealer bust, DAS off, re-split
+  cap, and a new `ShoeTest`) and fixed the shoe and counting defects the audit listed. Red Seven
+  now starts at −2 per deck via `CountingSystem.initialRunningCount()`. A round that outruns the
+  shoe reshuffles the discards only (`Shoe.beginRound()` marks what's on the table) instead of
+  rebuilding a full shoe that could re-deal visible cards and zeroing the counts. An exhausted
+  fixed test shoe throws a named `IllegalStateException` instead of an IOOBE. Deleted the dead
+  `Hand.cardsToString()`. Tests 30 → 42. UI: keyboard shortcuts (Enter, H/S/D/P — P for split,
+  which the backlog didn't name), the last bet re-placed at the start of each round when still
+  affordable, and "Leave Table" after any settled round, which confirms and then ends the session
+  with a cash-out summary (net up/down against the starting bankroll). The confirmation overlay
+  became one shared, parameterized overlay to make that possible. "New Game" now appears only
+  once a session has ended (out of chips or cashed out) and no longer confirms, since there is
+  nothing left to lose at that point; mid-session, "Leave Table" is the way out. The UI was
+  checked under Xvfb from scene snapshots, not yet by the owner.
