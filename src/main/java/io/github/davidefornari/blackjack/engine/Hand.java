@@ -151,12 +151,4 @@ public final class Hand {
     public boolean isActionable() {
         return status() == Status.ACTIVE;
     }
-
-    public String cardsToString() {
-        StringBuilder sb = new StringBuilder();
-        for (Card card : cards) {
-            sb.append(card).append(' ');
-        }
-        return sb.toString().trim();
-    }
 }

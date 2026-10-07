@@ -6,6 +6,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -278,6 +279,98 @@ class BlackjackTableTest {
         List<Settlement> settlements = table.settle();
         assertEquals(RoundOutcome.PUSH, settlements.get(0).outcome());
         assertEquals(1000, player.bankroll());
+    }
+
+    @Test
+    void beatingTheDealersTotalPaysEvenMoney() {
+        Player player = new Player("Ada", 1000);
+        // player: 10,9 = 19, stands. dealer up = 7 (no peek), hole = 10 -> 17, stands.
+        Shoe shoe = fixedShoe(
+                c(Rank.TEN, Suit.CLUBS), c(Rank.SEVEN, Suit.SPADES),
+                c(Rank.NINE, Suit.CLUBS), c(Rank.TEN, Suit.SPADES)
+        );
+        BlackjackTable table = new BlackjackTable(player, shoe, GameRules.standard());
+
+        table.startRound(100);
+        table.stand();
+        table.playDealerTurn();
+        List<Settlement> settlements = table.settle();
+
+        assertEquals(17, table.dealer().hand().total());
+        assertEquals(RoundOutcome.WIN, settlements.get(0).outcome());
+        assertEquals(200, settlements.get(0).payout()); // stake back (100) + 1:1 profit (100)
+        assertEquals(1100, player.bankroll());
+    }
+
+    @Test
+    void aDealerBustPaysAStandingHandEvenWithALowTotal() {
+        Player player = new Player("Ada", 1000);
+        // player: 10,2 = 12, stands. dealer up = 6 (no peek), hole = 10 -> 16, must draw: 10 -> 26 bust.
+        Shoe shoe = fixedShoe(
+                c(Rank.TEN, Suit.CLUBS), c(Rank.SIX, Suit.SPADES),
+                c(Rank.TWO, Suit.CLUBS), c(Rank.TEN, Suit.SPADES),
+                c(Rank.TEN, Suit.HEARTS)
+        );
+        BlackjackTable table = new BlackjackTable(player, shoe, GameRules.standard());
+
+        table.startRound(100);
+        table.stand();
+        table.playDealerTurn();
+        List<Settlement> settlements = table.settle();
+
+        assertTrue(table.dealer().hand().isBust());
+        assertEquals(RoundOutcome.WIN, settlements.get(0).outcome());
+        assertEquals(200, settlements.get(0).payout());
+        assertEquals(1100, player.bankroll());
+    }
+
+    @Test
+    void doublingASplitHandIsRefusedWhenDoubleAfterSplitIsOff() {
+        Player player = new Player("Ada", 1000);
+        // player: 8,8 vs dealer 2 (no peek). Split hands draw 3 and 2 -> 11 and 10, both
+        // two-card hands that could otherwise be doubled.
+        Shoe shoe = fixedShoe(
+                c(Rank.EIGHT, Suit.CLUBS), c(Rank.TWO, Suit.SPADES),
+                c(Rank.EIGHT, Suit.HEARTS), c(Rank.THREE, Suit.SPADES),
+                c(Rank.THREE, Suit.HEARTS), c(Rank.TWO, Suit.HEARTS)
+        );
+        GameRules noDas = new GameRules(6, 50, false, BlackjackPayout.THREE_TO_TWO, false, 4, false);
+        BlackjackTable table = new BlackjackTable(player, shoe, noDas);
+
+        table.startRound(100);
+        table.split();
+
+        assertEquals(11, player.hands().get(0).total());
+        assertFalse(table.canDouble());
+        assertThrows(IllegalStateException.class, table::doubleDown);
+        assertEquals(800, player.bankroll()); // bet + split, nothing more
+    }
+
+    @Test
+    void reSplittingStopsAtTheMaxSplitHandsCap() {
+        Player player = new Player("Ada", 1000);
+        // player: 8,8 vs dealer 2 (no peek). The first split deals another 8 to hand 1, making
+        // it a pair again; re-splitting it reaches 3 hands, the cap, so the next 8 can't split.
+        Shoe shoe = fixedShoe(
+                c(Rank.EIGHT, Suit.CLUBS), c(Rank.TWO, Suit.SPADES),
+                c(Rank.EIGHT, Suit.HEARTS), c(Rank.THREE, Suit.SPADES),
+                c(Rank.EIGHT, Suit.DIAMONDS), c(Rank.FIVE, Suit.HEARTS),
+                c(Rank.EIGHT, Suit.SPADES), c(Rank.FOUR, Suit.HEARTS)
+        );
+        GameRules maxThree = new GameRules(6, 50, false, BlackjackPayout.THREE_TO_TWO, true, 3, false);
+        BlackjackTable table = new BlackjackTable(player, shoe, maxThree);
+
+        table.startRound(100);
+        table.split();
+        assertTrue(table.canSplit());
+        table.split();
+
+        assertEquals(3, player.hands().size());
+        assertEquals(0, table.activeHandIndex());
+        assertTrue(player.hands().get(0).isPair());
+        assertFalse(table.canSplit());
+        assertThrows(IllegalStateException.class, table::split);
+        assertEquals(700, player.bankroll()); // three hands of 100 each
     }
 
     @Test

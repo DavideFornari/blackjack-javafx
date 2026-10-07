@@ -32,7 +32,11 @@ public enum CountingSystem {
         }
     },
 
-    /** Unbalanced (deliberately finishes a full shoe at +2), suit-sensitive on 7s. */
+    /**
+     * Unbalanced, suit-sensitive on 7s: a full deck's tags sum to +2, not 0. Starts at the
+     * conventional initial running count of -2 per deck, so a fully dealt shoe ends at 0 and
+     * the published betting thresholds line up with the displayed count.
+     */
     RED_SEVEN("Red Seven") {
         @Override
         public int tagFor(Card card) {
@@ -41,6 +45,11 @@ public enum CountingSystem {
             if (rank == Rank.SEVEN && card.suit().color() == Suit.Color.RED) return 1;
             if (rank.isTenValue() || rank.isAce()) return -1;
             return 0;
+        }
+
+        @Override
+        public int initialRunningCount(int deckCount) {
+            return -2 * deckCount;
         }
     },
 
@@ -68,4 +77,9 @@ public enum CountingSystem {
     }
 
     public abstract int tagFor(Card card);
+
+    /** The running count of a freshly shuffled shoe: 0 for balanced systems. */
+    public int initialRunningCount(int deckCount) {
+        return 0;
+    }
 }
