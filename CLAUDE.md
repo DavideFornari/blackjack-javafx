@@ -235,8 +235,8 @@ Break these and something subtle fails, usually silently.
   `Group` as the scene root instead. Dormant while `AppIcon` just decodes a PNG.
 - The status line moved from a top bar to `.status-bar` inside `buildControlsArea()` on
   request (2026-09-16); there is no `layout.setTop(...)`. Deliberate, not an oversight.
-- **Keyboard shortcuts are a scene-level `KEY_PRESSED` filter** (`onKeyPressed`), installed when
-  `root` joins a scene — a filter rather than a handler on `root`, because when nothing has
+- **Keyboard shortcuts are a stage-level `KEY_PRESSED` filter** (`onKeyPressed`), installed by
+  `attachStage()` — a filter rather than a handler on `root`, because when nothing has
   focus key events go to the `Scene` and never reach `root`. Each key just `fire()`s its
   button, so the button's disabled state stays the single source of truth. It does nothing
   while any overlay is visible, so the setup and settings text fields keep their keys; a new

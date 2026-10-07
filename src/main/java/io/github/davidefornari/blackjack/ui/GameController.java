@@ -179,11 +179,6 @@ public final class GameController {
                 tableLayout, shoeInfoLabel, winLoseBanner, confirmOverlay, insuranceOverlay,
                 setupOverlay, gameSettingsOverlay);
         wireActions();
-        root.sceneProperty().addListener((obs, oldScene, scene) -> {
-            if (scene != null) {
-                scene.addEventFilter(KeyEvent.KEY_PRESSED, this::onKeyPressed);
-            }
-        });
         refresh();
     }
 
@@ -196,9 +191,11 @@ public final class GameController {
      * stacks, extra hands from a split) instead of leaving them cropped behind a fixed
      * size that inevitably goes stale as the table UI grows. Deliberately grow-only —
      * see {@link #growToFitContent()} — so the window never jumps smaller mid-round.
+     * Also installs the keyboard shortcuts (see {@link #onKeyPressed}).
      */
     public void attachStage(Stage stage) {
         this.stage = stage;
+        stage.addEventFilter(KeyEvent.KEY_PRESSED, this::onKeyPressed);
     }
 
     /** Grows (never shrinks) the window to fit the current layout, once it's actually measured. */
@@ -655,7 +652,7 @@ public final class GameController {
     /**
      * Table shortcuts: H/S/D/P for hit, stand, double, split; Enter to deal or start the next
      * round. Each just fires its button, so the button's own enabled state is the only rule.
-     * A scene-level filter, so it works whatever has focus — which is also why it stands down
+     * A stage-level filter, so it works whatever has focus — which is also why it stands down
      * while any overlay is up, where the setup and settings text fields need those keys.
      */
     private void onKeyPressed(KeyEvent event) {
@@ -676,9 +673,7 @@ public final class GameController {
             return;
         }
         event.consume();
-        if (target.isVisible() && !target.isDisabled()) {
-            target.fire();
-        }
+        target.fire(); // no-op while disabled, and refresh() disables every hidden button
     }
 
     // ------------------------------------------------------------------
@@ -753,11 +748,7 @@ public final class GameController {
     }
 
     private static long sum(List<Long> chips) {
-        long total = 0;
-        for (long chip : chips) {
-            total += chip;
-        }
-        return total;
+        return chips.stream().mapToLong(Long::longValue).sum();
     }
 
     private void onHit() {
