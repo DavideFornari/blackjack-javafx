@@ -81,6 +81,7 @@ public final class BlackjackTable {
         if (shoe.needsShuffle()) {
             shoe.shuffle();
         }
+        shoe.beginRound();
 
         dealer = new Dealer();
         player.resetForNewRound();
