@@ -1,6 +1,5 @@
 package io.github.davidefornari.blackjack.ui;
 
-import io.github.davidefornari.blackjack.engine.BlackjackPayout;
 import io.github.davidefornari.blackjack.engine.BlackjackTable;
 import io.github.davidefornari.blackjack.engine.Card;
 import io.github.davidefornari.blackjack.engine.CountingSystem;
@@ -27,16 +26,11 @@ import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
-import javafx.scene.control.RadioButton;
-import javafx.scene.control.ScrollPane;
-import javafx.scene.control.Slider;
 import javafx.scene.control.TextField;
-import javafx.scene.control.ToggleGroup;
 import javafx.scene.control.Tooltip;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.BorderPane;
-import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
@@ -75,10 +69,10 @@ public final class GameController {
 
     private final StackPane root = new StackPane();
     private final VBox setupOverlay;
-    private final VBox confirmOverlay;
-    private final VBox gameSettingsOverlay;
-    private final VBox countingGuideOverlay;
-    private final VBox insuranceOverlay;
+    private final ConfirmPane confirmOverlay = new ConfirmPane();
+    private final GameSettingsPane gameSettingsOverlay;
+    private final CountingGuidePane countingGuideOverlay = new CountingGuidePane();
+    private final OverlayPane insuranceOverlay;
     private final BorderPane tableLayout;
 
     private final TablePane tablePane = new TablePane();
@@ -107,11 +101,6 @@ public final class GameController {
     private final Button leaveTableButton = new Button("Leave Table");
     private final Button newGameButton = new Button("New Game");
 
-    private final Label confirmTitleLabel = new Label();
-    private final Label confirmMessageLabel = new Label();
-    private final Button confirmActionButton = new Button();
-    private Runnable confirmAction = () -> { };
-
     private final TextField nameField = new TextField();
     private final TextField bankrollField = new TextField(String.valueOf(DEFAULT_BANKROLL));
     private final ComboBox<CountingSystem> countingCombo =
@@ -119,19 +108,6 @@ public final class GameController {
     private final CheckBox showCountCheckBox = new CheckBox("Show card count");
     private final Label setupErrorLabel = new Label();
     private final Label rulesSummaryLabel = new Label();
-
-    private final ComboBox<Integer> deckCombo =
-            new ComboBox<>(FXCollections.observableArrayList(1, 2, 4, 6, 8));
-    private final RadioButton standRadio = new RadioButton("Stand (S17, friendlier)");
-    private final RadioButton hitRadio = new RadioButton("Hit (H17, standard casino)");
-    private final CheckBox doubleAfterSplitCheck = new CheckBox("Allowed");
-    private final RadioButton payout32Radio = new RadioButton("3:2 (standard)");
-    private final RadioButton payout65Radio = new RadioButton("6:5 (worse for the player)");
-    private final Slider penetrationSlider = new Slider(40, 80, GameRules.standard().penetrationPercent());
-    private final Label penetrationValueLabel = new Label();
-    private final ComboBox<Integer> maxSplitCombo =
-            new ComboBox<>(FXCollections.observableArrayList(2, 3, 4));
-    private final CheckBox insuranceAllowedCheck = new CheckBox("Offer insurance against a dealer Ace");
 
     private final Label insuranceMessageLabel = new Label();
     private final HandPane insuranceHandPreview = new HandPane();
@@ -153,9 +129,10 @@ public final class GameController {
 
     public GameController() {
         setupOverlay = buildSetupOverlay();
-        confirmOverlay = buildConfirmOverlay();
-        gameSettingsOverlay = buildGameSettingsOverlay();
-        countingGuideOverlay = buildCountingGuideOverlay();
+        gameSettingsOverlay = new GameSettingsPane(rules -> {
+            pendingRules = rules;
+            rulesSummaryLabel.setText(describeRules(rules));
+        });
         insuranceOverlay = buildInsuranceOverlay();
         tableLayout = buildTableLayout();
 
@@ -234,12 +211,12 @@ public final class GameController {
         rulesSummaryLabel.setText(describeRules(pendingRules));
 
         Button gameSettingsButton = new Button("Game Settings");
-        gameSettingsButton.setOnAction(e -> showGameSettingsOverlay());
+        gameSettingsButton.setOnAction(e -> gameSettingsOverlay.open(pendingRules));
 
         Button countingGuideButton = new Button("?");
         countingGuideButton.getStyleClass().add("setup-help-button");
         countingGuideButton.setAccessibleText("Card-counting guide");
-        countingGuideButton.setOnAction(e -> show(countingGuideOverlay, true));
+        countingGuideButton.setOnAction(e -> countingGuideOverlay.open());
 
         Button sitDownButton = new Button("Sit Down");
         sitDownButton.getStyleClass().add("primary-button");
@@ -248,7 +225,7 @@ public final class GameController {
         VBox form = new VBox(10,
                 new Label("Player name"), nameField,
                 new Label("Starting bankroll"), bankrollField,
-                new Label("Card-counting system"), buttonRow(countingCombo, countingGuideButton),
+                new Label("Card-counting system"), OverlayPane.buttonRow(countingCombo, countingGuideButton),
                 showCountCheckBox,
                 gameSettingsButton,
                 rulesSummaryLabel,
@@ -267,195 +244,10 @@ public final class GameController {
         return overlay;
     }
 
-    /**
-     * In-theme replacement for a plain {@link javafx.scene.control.Alert} confirmation —
-     * reuses the same {@code setup-overlay}/{@code setup-card} look as the setup screen
-     * instead of a default-styled system dialog, which looked out of place on this table
-     * and had its own contrast problems (see {@code openGameSettingsDialog()}). Shared by
-     * every session-ending action; {@link #showConfirmOverlay} fills in the specifics.
-     */
-    private VBox buildConfirmOverlay() {
-        confirmTitleLabel.getStyleClass().add("setup-title");
-
-        confirmMessageLabel.setWrapText(true);
-        confirmMessageLabel.setTextAlignment(TextAlignment.CENTER);
-
-        confirmActionButton.getStyleClass().add("primary-button");
-        confirmActionButton.setOnAction(e -> {
-            show(confirmOverlay, false);
-            confirmAction.run();
-        });
-
-        Button cancelButton = new Button("Cancel");
-        cancelButton.setOnAction(e -> show(confirmOverlay, false));
-
-        return overlay(340, confirmTitleLabel, confirmMessageLabel, buttonRow(cancelButton, confirmActionButton));
-    }
-
-    private void showConfirmOverlay(String title, String message, String confirmText, Runnable onConfirm) {
-        confirmTitleLabel.setText(title);
-        confirmMessageLabel.setText(message);
-        confirmActionButton.setText(confirmText);
-        confirmAction = onConfirm;
-        show(confirmOverlay, true);
-    }
-
-    /** What each system on the setup form counts, how it is played, and which to pick. */
-    private VBox buildCountingGuideOverlay() {
-        Label title = new Label("Counting");
-        title.getStyleClass().add("setup-title");
-
-        Label tipsHeading = new Label("Tips on real betting");
-        tipsHeading.getStyleClass().add("setup-heading");
-
-        VBox text = new VBox(10,
-                wrapped("Every card dealt moves the running count. A high count means the shoe left "
-                        + "is rich in tens and Aces, which favours you: bet more. The table keeps the "
-                        + "count for you and, for balanced systems, also shows the true count: the "
-                        + "running count divided by the decks left, the number to bet on."),
-                wrapped("Hi-Lo: 2-6 count +1, 7-9 count 0, tens and Aces -1. Level 1 and balanced, "
-                        + "the standard count. Raise your bet as the true count climbs past +1."),
-                wrapped("Red Seven: Hi-Lo plus red 7s at +1. Unbalanced, so it starts at -2 per deck "
-                        + "and is read straight off the running count: raise your bet once it reaches "
-                        + "0. Arnold Snyder's count, built to need no division."),
-                wrapped("Zen Count: 2, 3, 7 count +1, 4-6 +2, tens -2, Aces -1. Level 2 and balanced, "
-                        + "also Snyder's: weighting the cards more finely tracks the shoe more "
-                        + "accurately than Hi-Lo."),
-                wrapped("Omega II: 2, 3, 7 count +1, 4-6 +2, 9 -1, tens -2, 8s and Aces 0. Level 2 "
-                        + "and balanced, by Bryce Carlson. Leaving the Ace out sharpens playing "
-                        + "decisions; for betting, players add a separate Ace count, which this table "
-                        + "doesn't show."),
-                tipsHeading,
-                wrapped("At a real table you keep the count yourself, in your head, at dealing speed. "
-                        + "Start with Hi-Lo. Pick Red Seven if dividing by the decks left is too much: "
-                        + "it gets about 80% of Hi-Lo's gain for less work. Move to Zen or Omega II "
-                        + "only once Hi-Lo is automatic: a complex count played slowly or with mistakes "
-                        + "earns less than a simple one played well."));
-
-        Button closeButton = new Button("Close");
-        closeButton.getStyleClass().add("primary-button");
-        closeButton.setOnAction(e -> show(countingGuideOverlay, false));
-
-        // Scrolls only when the window is shorter than the guide. A ScrollPane sizes itself from
-        // its content's unwrapped (one-line) height, so its preferred height follows the text's
-        // laid-out height instead.
-        ScrollPane scroll = new ScrollPane(text);
-        scroll.setFitToWidth(true);
-        scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
-        scroll.prefViewportHeightProperty().bind(text.heightProperty());
-        scroll.getStyleClass().add("setup-scroll");
-
-        return overlay(480, title, scroll, buttonRow(closeButton));
-    }
-
-    private static Label wrapped(String text) {
-        Label label = new Label(text);
-        label.setWrapText(true);
-        return label;
-    }
-
-    /** A hidden in-theme popup: a {@code setup-card} of {@code content}, centred on a dimming {@code setup-overlay}. */
-    private static VBox overlay(double maxWidth, Node... content) {
-        VBox card = new VBox(16, content);
-        card.setAlignment(Pos.CENTER);
-        card.setPadding(new Insets(28));
-        card.setMaxWidth(maxWidth);
-        card.getStyleClass().add("setup-card");
-
-        VBox overlay = new VBox(card);
-        overlay.setAlignment(Pos.CENTER);
-        overlay.getStyleClass().add("setup-overlay");
-        show(overlay, false);
-        return overlay;
-    }
-
-    private static HBox buttonRow(Node... buttons) {
-        HBox row = new HBox(12, buttons);
-        row.setAlignment(Pos.CENTER);
-        return row;
-    }
-
     /** Shows or hides {@code node}, taking it out of layout while hidden. */
     private static void show(Node node, boolean visible) {
         node.setVisible(visible);
         node.setManaged(visible);
-    }
-
-    /**
-     * Every field here is already a {@link GameRules} constructor parameter — this overlay
-     * is purely UI, no engine changes. In-theme (reuses {@code setup-overlay}/{@code setup-card},
-     * same as {@link #buildConfirmOverlay()}) rather than a
-     * {@link javafx.scene.control.Dialog}: a first attempt at this exact panel used
-     * {@code Dialog<GameRules>} and needed a caption-color
-     * override to be readable — this version sidesteps that entirely by using our own CSS.
-     */
-    private VBox buildGameSettingsOverlay() {
-        Label title = new Label("Game Settings");
-        title.getStyleClass().add("setup-title");
-
-        ToggleGroup softSeventeenGroup = new ToggleGroup();
-        standRadio.setToggleGroup(softSeventeenGroup);
-        hitRadio.setToggleGroup(softSeventeenGroup);
-
-        ToggleGroup payoutGroup = new ToggleGroup();
-        payout32Radio.setToggleGroup(payoutGroup);
-        payout65Radio.setToggleGroup(payoutGroup);
-
-        penetrationSlider.setMajorTickUnit(10);
-        penetrationSlider.setMinorTickCount(1);
-        penetrationSlider.setSnapToTicks(true);
-        penetrationSlider.setShowTickMarks(true);
-        penetrationSlider.valueProperty().addListener((obs, oldVal, newVal) ->
-                penetrationValueLabel.setText(Math.round(newVal.doubleValue()) + "%"));
-
-        GridPane grid = new GridPane();
-        grid.setHgap(14);
-        grid.setVgap(12);
-        grid.setAlignment(Pos.CENTER);
-        int row = 0;
-        grid.addRow(row++, new Label("Deck count"), deckCombo);
-        grid.addRow(row++, new Label("Dealer soft 17"), new VBox(4, standRadio, hitRadio));
-        grid.addRow(row++, new Label("Double after split"), doubleAfterSplitCheck);
-        grid.addRow(row++, new Label("Blackjack payout"), new VBox(4, payout32Radio, payout65Radio));
-        grid.addRow(row++, new Label("Shoe penetration"), new HBox(8, penetrationSlider, penetrationValueLabel));
-        grid.addRow(row++, new Label("Max split hands"), maxSplitCombo);
-        grid.addRow(row++, new Label("Insurance"), insuranceAllowedCheck);
-
-        Button saveButton = new Button("Save");
-        saveButton.getStyleClass().add("primary-button");
-        saveButton.setOnAction(e -> applyGameSettings());
-
-        Button cancelButton = new Button("Cancel");
-        cancelButton.setOnAction(e -> show(gameSettingsOverlay, false));
-
-        return overlay(420, title, grid, buttonRow(cancelButton, saveButton));
-    }
-
-    /** Resets every control from {@code pendingRules} so a prior abandoned edit never lingers into the next open. */
-    private void showGameSettingsOverlay() {
-        deckCombo.getSelectionModel().select(Integer.valueOf(pendingRules.deckCount()));
-        (pendingRules.dealerHitsSoftSeventeen() ? hitRadio : standRadio).setSelected(true);
-        doubleAfterSplitCheck.setSelected(pendingRules.doubleAfterSplitAllowed());
-        (pendingRules.blackjackPayout() == BlackjackPayout.SIX_TO_FIVE ? payout65Radio : payout32Radio).setSelected(true);
-        penetrationSlider.setValue(pendingRules.penetrationPercent());
-        penetrationValueLabel.setText(pendingRules.penetrationPercent() + "%");
-        maxSplitCombo.getSelectionModel().select(Integer.valueOf(pendingRules.maxSplitHands()));
-        insuranceAllowedCheck.setSelected(pendingRules.insuranceAllowed());
-
-        show(gameSettingsOverlay, true);
-    }
-
-    private void applyGameSettings() {
-        pendingRules = new GameRules(
-                deckCombo.getValue(),
-                (int) Math.round(penetrationSlider.getValue()),
-                hitRadio.isSelected(),
-                payout65Radio.isSelected() ? BlackjackPayout.SIX_TO_FIVE : BlackjackPayout.THREE_TO_TWO,
-                doubleAfterSplitCheck.isSelected(),
-                maxSplitCombo.getValue(),
-                insuranceAllowedCheck.isSelected());
-        rulesSummaryLabel.setText(describeRules(pendingRules));
-        show(gameSettingsOverlay, false);
     }
 
     private String describeRules(GameRules rules) {
@@ -470,12 +262,12 @@ public final class GameController {
 
     /**
      * Paused mid-deal, on an Ace up-card only, when {@link GameRules#insuranceAllowed()}
-     * is on — same in-theme {@code setup-overlay}/{@code setup-card} pattern as
-     * {@link #buildConfirmOverlay()} rather than a stock dialog. The insurance
+     * is on — an in-theme {@link OverlayPane} rather than a stock dialog. Stays here rather than
+     * in its own class because its buttons drive the round's flow. The insurance
      * amount itself is fixed at the standard casino max (half the original wager) rather
      * than an adjustable field, to avoid a bespoke bet-amount input.
      */
-    private VBox buildInsuranceOverlay() {
+    private OverlayPane buildInsuranceOverlay() {
         Label title = new Label("Insurance?");
         title.getStyleClass().add("setup-title");
 
@@ -492,8 +284,8 @@ public final class GameController {
 
         declineInsuranceButton.setOnAction(e -> onDeclineInsurance());
 
-        return overlay(340, title, insuranceHandPreview, insuranceMessageLabel,
-                buttonRow(declineInsuranceButton, takeInsuranceButton));
+        return new OverlayPane(340, title, insuranceHandPreview, insuranceMessageLabel,
+                OverlayPane.buttonRow(declineInsuranceButton, takeInsuranceButton));
     }
 
     /** Shows the insurance popup after a short pause, so the dealt hand finishes animating onto the table first. */
@@ -531,18 +323,18 @@ public final class GameController {
         insuranceHandPreview.setWager(0);
         insuranceHandPreview.setTotalText(handStatusText(hand));
 
-        show(insuranceOverlay, true);
+        insuranceOverlay.open();
     }
 
     private void onTakeInsurance() {
         table.takeInsurance(table.maxInsuranceBet());
-        show(insuranceOverlay, false);
+        insuranceOverlay.close();
         afterInsuranceDecision();
     }
 
     private void onDeclineInsurance() {
         table.declineInsurance();
-        show(insuranceOverlay, false);
+        insuranceOverlay.close();
         afterInsuranceDecision();
     }
 
@@ -662,17 +454,16 @@ public final class GameController {
      */
     private void onKeyPressed(KeyEvent event) {
         if (event.getCode() == KeyCode.ESCAPE) {
-            for (VBox popup : List.of(countingGuideOverlay, gameSettingsOverlay, confirmOverlay)) {
-                if (popup.isVisible()) {
-                    show(popup, false); // exactly what each popup's Close/Cancel button does
+            for (OverlayPane popup : List.of(countingGuideOverlay, gameSettingsOverlay, confirmOverlay)) {
+                if (popup.isOpen()) {
+                    popup.close(); // exactly what each popup's Close/Cancel button does
                     event.consume();
                     return;
                 }
             }
         }
-        boolean overlayShowing = setupOverlay.isVisible() || gameSettingsOverlay.isVisible()
-                || confirmOverlay.isVisible() || insuranceOverlay.isVisible()
-                || countingGuideOverlay.isVisible();
+        boolean overlayShowing = setupOverlay.isVisible() || gameSettingsOverlay.isOpen()
+                || confirmOverlay.isOpen() || insuranceOverlay.isOpen() || countingGuideOverlay.isOpen();
         if (overlayShowing) {
             return;
         }
@@ -851,7 +642,7 @@ public final class GameController {
 
     /** Confirms first — leaving ends the session, so a misclick next to "Next Round" shouldn't be able to. */
     private void onLeaveTable() {
-        showConfirmOverlay("Cash Out?",
+        confirmOverlay.ask("Cash Out?",
                 "Cash out with " + player.bankroll() + " chips and end this session?",
                 "Yes, Cash Out",
                 () -> {
