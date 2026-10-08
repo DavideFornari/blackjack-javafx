@@ -113,12 +113,11 @@ Label {
     -fx-border-width: 1;
 }
 
+/* card-back.png is drawn at 2x the card's size (sharp on HiDPI) with its own transparent
+   rounded corners, since a background image isn't clipped by -fx-background-radius. */
 .card-back {
-    -fx-background-color: linear-gradient(to bottom right, #1e3a8a, #1c2f6b);
-    -fx-background-radius: 8;
-    -fx-border-color: #0f2557;
-    -fx-border-radius: 8;
-    -fx-border-width: 2;
+    -fx-background-image: url("card-back.png");
+    -fx-background-size: 100% 100%;
 }
 
 .card-rank {
