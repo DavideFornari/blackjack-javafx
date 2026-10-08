@@ -21,6 +21,7 @@ import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
@@ -274,28 +275,14 @@ public final class GameController {
 
         confirmActionButton.getStyleClass().add("primary-button");
         confirmActionButton.setOnAction(e -> {
-            hideConfirmOverlay();
+            show(confirmOverlay, false);
             confirmAction.run();
         });
 
         Button cancelButton = new Button("Cancel");
-        cancelButton.setOnAction(e -> hideConfirmOverlay());
+        cancelButton.setOnAction(e -> show(confirmOverlay, false));
 
-        HBox buttonRow = new HBox(12, cancelButton, confirmActionButton);
-        buttonRow.setAlignment(Pos.CENTER);
-
-        VBox card = new VBox(16, confirmTitleLabel, confirmMessageLabel, buttonRow);
-        card.setAlignment(Pos.CENTER);
-        card.setPadding(new Insets(28));
-        card.setMaxWidth(340);
-        card.getStyleClass().add("setup-card");
-
-        VBox overlay = new VBox(card);
-        overlay.setAlignment(Pos.CENTER);
-        overlay.getStyleClass().add("setup-overlay");
-        overlay.setVisible(false);
-        overlay.setManaged(false);
-        return overlay;
+        return overlay(340, confirmTitleLabel, confirmMessageLabel, buttonRow(cancelButton, confirmActionButton));
     }
 
     private void showConfirmOverlay(String title, String message, String confirmText, Runnable onConfirm) {
@@ -303,13 +290,34 @@ public final class GameController {
         confirmMessageLabel.setText(message);
         confirmActionButton.setText(confirmText);
         confirmAction = onConfirm;
-        confirmOverlay.setVisible(true);
-        confirmOverlay.setManaged(true);
+        show(confirmOverlay, true);
     }
 
-    private void hideConfirmOverlay() {
-        confirmOverlay.setVisible(false);
-        confirmOverlay.setManaged(false);
+    /** A hidden in-theme popup: a {@code setup-card} of {@code content}, centred on a dimming {@code setup-overlay}. */
+    private static VBox overlay(double maxWidth, Node... content) {
+        VBox card = new VBox(16, content);
+        card.setAlignment(Pos.CENTER);
+        card.setPadding(new Insets(28));
+        card.setMaxWidth(maxWidth);
+        card.getStyleClass().add("setup-card");
+
+        VBox overlay = new VBox(card);
+        overlay.setAlignment(Pos.CENTER);
+        overlay.getStyleClass().add("setup-overlay");
+        show(overlay, false);
+        return overlay;
+    }
+
+    private static HBox buttonRow(Node... buttons) {
+        HBox row = new HBox(12, buttons);
+        row.setAlignment(Pos.CENTER);
+        return row;
+    }
+
+    /** Shows or hides {@code node}, taking it out of layout while hidden. */
+    private static void show(Node node, boolean visible) {
+        node.setVisible(visible);
+        node.setManaged(visible);
     }
 
     /**
@@ -357,23 +365,9 @@ public final class GameController {
         saveButton.setOnAction(e -> applyGameSettings());
 
         Button cancelButton = new Button("Cancel");
-        cancelButton.setOnAction(e -> hideGameSettingsOverlay());
+        cancelButton.setOnAction(e -> show(gameSettingsOverlay, false));
 
-        HBox buttonRow = new HBox(12, cancelButton, saveButton);
-        buttonRow.setAlignment(Pos.CENTER);
-
-        VBox card = new VBox(16, title, grid, buttonRow);
-        card.setAlignment(Pos.CENTER);
-        card.setPadding(new Insets(28));
-        card.setMaxWidth(420);
-        card.getStyleClass().add("setup-card");
-
-        VBox overlay = new VBox(card);
-        overlay.setAlignment(Pos.CENTER);
-        overlay.getStyleClass().add("setup-overlay");
-        overlay.setVisible(false);
-        overlay.setManaged(false);
-        return overlay;
+        return overlay(420, title, grid, buttonRow(cancelButton, saveButton));
     }
 
     /** Resets every control from {@code pendingRules} so a prior abandoned edit never lingers into the next open. */
@@ -387,13 +381,7 @@ public final class GameController {
         maxSplitCombo.getSelectionModel().select(Integer.valueOf(pendingRules.maxSplitHands()));
         insuranceAllowedCheck.setSelected(pendingRules.insuranceAllowed());
 
-        gameSettingsOverlay.setVisible(true);
-        gameSettingsOverlay.setManaged(true);
-    }
-
-    private void hideGameSettingsOverlay() {
-        gameSettingsOverlay.setVisible(false);
-        gameSettingsOverlay.setManaged(false);
+        show(gameSettingsOverlay, true);
     }
 
     private void applyGameSettings() {
@@ -406,7 +394,7 @@ public final class GameController {
                 maxSplitCombo.getValue(),
                 insuranceAllowedCheck.isSelected());
         rulesSummaryLabel.setText(describeRules(pendingRules));
-        hideGameSettingsOverlay();
+        show(gameSettingsOverlay, false);
     }
 
     private String describeRules(GameRules rules) {
@@ -443,21 +431,8 @@ public final class GameController {
 
         declineInsuranceButton.setOnAction(e -> onDeclineInsurance());
 
-        HBox buttonRow = new HBox(12, declineInsuranceButton, takeInsuranceButton);
-        buttonRow.setAlignment(Pos.CENTER);
-
-        VBox card = new VBox(16, title, insuranceHandPreview, insuranceMessageLabel, buttonRow);
-        card.setAlignment(Pos.CENTER);
-        card.setPadding(new Insets(28));
-        card.setMaxWidth(340);
-        card.getStyleClass().add("setup-card");
-
-        VBox overlay = new VBox(card);
-        overlay.setAlignment(Pos.CENTER);
-        overlay.getStyleClass().add("setup-overlay");
-        overlay.setVisible(false);
-        overlay.setManaged(false);
-        return overlay;
+        return overlay(340, title, insuranceHandPreview, insuranceMessageLabel,
+                buttonRow(declineInsuranceButton, takeInsuranceButton));
     }
 
     /** Shows the insurance popup after a short pause, so the dealt hand finishes animating onto the table first. */
@@ -495,24 +470,18 @@ public final class GameController {
         insuranceHandPreview.setWager(0);
         insuranceHandPreview.setTotalText(handStatusText(hand));
 
-        insuranceOverlay.setVisible(true);
-        insuranceOverlay.setManaged(true);
-    }
-
-    private void hideInsuranceOverlay() {
-        insuranceOverlay.setVisible(false);
-        insuranceOverlay.setManaged(false);
+        show(insuranceOverlay, true);
     }
 
     private void onTakeInsurance() {
         table.takeInsurance(table.maxInsuranceBet());
-        hideInsuranceOverlay();
+        show(insuranceOverlay, false);
         afterInsuranceDecision();
     }
 
     private void onDeclineInsurance() {
         table.declineInsurance();
-        hideInsuranceOverlay();
+        show(insuranceOverlay, false);
         afterInsuranceDecision();
     }
 
@@ -850,8 +819,7 @@ public final class GameController {
 
     private void refresh() {
         boolean setupPhase = phase == Phase.SETUP;
-        setupOverlay.setVisible(setupPhase);
-        setupOverlay.setManaged(setupPhase);
+        show(setupOverlay, setupPhase);
 
         if (setupPhase) {
             return;
@@ -886,10 +854,8 @@ public final class GameController {
         betErrorLabel.setVisible(betting);
         // Once dealt, each hand shows its own chip stack right under its cards — the pre-deal
         // pile in the controls area would just be a confusing, stale duplicate of that.
-        betStackPane.setVisible(betting);
-        betStackPane.setManaged(betting);
-        betTotalLabel.setVisible(betting);
-        betTotalLabel.setManaged(betting);
+        show(betStackPane, betting);
+        show(betTotalLabel, betting);
 
         hitButton.setDisable(!playerTurn);
         standButton.setDisable(!playerTurn);
