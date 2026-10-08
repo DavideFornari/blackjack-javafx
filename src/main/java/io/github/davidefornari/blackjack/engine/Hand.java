@@ -10,9 +10,8 @@ import java.util.List;
  * <p>This is the direct fix for the original project's main rules bug: there, an Ace
  * ({@code Carta}) was hardcoded to value 11 with no downgrade path, so any hand with
  * two Aces scored as a 22 "bust" instead of a soft 12, and a hand like A+5 could never
- * be played as the soft 16 it actually is. Here, every Ace counts as 11 unless that
- * would push the total over 21, in which case Aces are downgraded to 1 one at a time
- * until the hand is 21 or under (or every Ace has been downgraded).
+ * be played as the soft 16 it actually is. Here, one Ace counts as 11 whenever that
+ * keeps the hand at 21 or under, and every other Ace counts as 1.
  */
 public final class Hand {
 
@@ -20,9 +19,7 @@ public final class Hand {
 
     private final List<Card> cards = new ArrayList<>();
     private long wager;
-    private boolean doubled;
     private boolean fromSplit;
-    private boolean splitAces;
     private Status decision = Status.ACTIVE;
 
     public void addCard(Card card) {
@@ -41,41 +38,21 @@ public final class Hand {
     }
 
     /**
-     * Best total achievable: sums hard values (Ace = 11), then downgrades one Ace
-     * from 11 to 1 at a time (subtracting 10) for as long as the total is over 21
-     * and an Ace is still being counted as 11.
+     * Best total achievable. Two Aces at 11 always bust, so at most one can count as 11:
+     * count them all as 1, then add 10 back for one of them if that stays at 21 or under.
      */
     public int total() {
-        int total = 0;
-        int acesAsEleven = 0;
-        for (Card card : cards) {
-            total += card.rank().hardValue();
-            if (card.rank().isAce()) {
-                acesAsEleven++;
-            }
-        }
-        while (total > 21 && acesAsEleven > 0) {
-            total -= 10;
-            acesAsEleven--;
-        }
-        return total;
+        return isSoft() ? lowTotal() + 10 : lowTotal();
     }
 
-    /** True if, at the best total, at least one Ace is still being counted as 11. */
+    /** True if, at the best total, an Ace is still being counted as 11. */
     public boolean isSoft() {
-        int total = 0;
-        int acesAsEleven = 0;
-        for (Card card : cards) {
-            total += card.rank().hardValue();
-            if (card.rank().isAce()) {
-                acesAsEleven++;
-            }
-        }
-        while (total > 21 && acesAsEleven > 0) {
-            total -= 10;
-            acesAsEleven--;
-        }
-        return acesAsEleven > 0;
+        return cards.stream().anyMatch(c -> c.rank().isAce()) && lowTotal() + 10 <= 21;
+    }
+
+    /** Every Ace counted as 1. */
+    private int lowTotal() {
+        return cards.stream().mapToInt(c -> c.rank().isAce() ? 1 : c.rank().hardValue()).sum();
     }
 
     public boolean isBust() {
@@ -104,29 +81,11 @@ public final class Hand {
         this.wager = wager;
     }
 
-    public boolean isDoubled() {
-        return doubled;
-    }
-
-    public void markDoubled() {
-        this.doubled = true;
-    }
-
     public boolean isFromSplit() {
         return fromSplit;
     }
 
     public void markFromSplit() {
-        this.fromSplit = true;
-    }
-
-    /** Split Aces get exactly one more card each and cannot be hit again (standard house rule). */
-    public boolean isSplitAces() {
-        return splitAces;
-    }
-
-    public void markSplitAces() {
-        this.splitAces = true;
         this.fromSplit = true;
     }
 

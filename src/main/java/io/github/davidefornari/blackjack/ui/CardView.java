@@ -1,7 +1,6 @@
 package io.github.davidefornari.blackjack.ui;
 
 import io.github.davidefornari.blackjack.engine.Card;
-import io.github.davidefornari.blackjack.engine.Suit;
 import javafx.geometry.Pos;
 import javafx.scene.control.Label;
 import javafx.scene.layout.StackPane;
@@ -23,7 +22,7 @@ public final class CardView extends StackPane {
     public static CardView faceUp(Card card) {
         CardView view = new CardView();
         view.getStyleClass().add("card-face");
-        view.getStyleClass().add(card.suit().color() == Suit.Color.RED ? "card-red" : "card-black");
+        view.getStyleClass().add(card.suit().isRed() ? "card-red" : "card-black");
 
         Label rank = new Label(card.rank().symbol());
         rank.getStyleClass().add("card-rank");

@@ -113,7 +113,8 @@ public final class BlackjackTable {
      * (on an Ace up-card) has been made.
      */
     private void resolveDealerPeek() {
-        if (dealer.showsAceOrTen() && dealer.hasBlackjack()) {
+        // A natural always shows its Ace or ten face-up, so this is exactly the casino peek.
+        if (dealer.hasBlackjack()) {
             dealer.revealHoleCard();
             dealerBlackjackShortCircuit = true;
             activeHandIndex = -1;
@@ -159,9 +160,7 @@ public final class BlackjackTable {
         boolean dealerBlackjack = dealer.hasBlackjack();
         boolean won = amount > 0 && dealerBlackjack;
         long payout = won ? amount * 3 : 0;
-        if (payout > 0) {
-            player.credit(payout);
-        }
+        player.credit(payout);
         insuranceSettlement = new InsuranceSettlement(amount, won, payout);
         resolveDealerPeek();
     }
@@ -220,7 +219,6 @@ public final class BlackjackTable {
         Hand hand = activeHand();
         player.debit(hand.wager());
         hand.setWager(hand.wager() * 2);
-        hand.markDoubled();
         hand.addCard(shoe.draw());
         hand.stand();
         moveToNextHand();
@@ -265,8 +263,7 @@ public final class BlackjackTable {
         second.addCard(shoe.draw());
 
         if (aces) {
-            first.markSplitAces();
-            second.markSplitAces();
+            // Split Aces get exactly one card each and no further action.
             first.stand();
             second.stand();
         }
@@ -338,9 +335,7 @@ public final class BlackjackTable {
                 payout = 0;
             }
 
-            if (payout > 0) {
-                player.credit(payout);
-            }
+            player.credit(payout);
             settlements.add(new Settlement(hand, outcome, payout));
         }
         return settlements;

@@ -196,7 +196,6 @@ class BlackjackTableTest {
 
         Hand hand = player.firstHand();
         assertEquals(200, hand.wager());
-        assertTrue(hand.isDoubled());
         assertEquals(3, hand.size());
         assertEquals(20, hand.total());
         assertFalse(hand.isActionable());
@@ -251,8 +250,6 @@ class BlackjackTableTest {
         Hand first = player.hands().get(0);
         Hand second = player.hands().get(1);
 
-        assertTrue(first.isSplitAces());
-        assertTrue(second.isSplitAces());
         assertEquals(2, first.size());
         assertEquals(2, second.size());
         assertEquals(20, second.total());

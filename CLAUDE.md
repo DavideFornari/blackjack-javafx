@@ -149,20 +149,22 @@ reviewing it before writing anything.
 1. **No soft-Ace handling (the critical bug).** `Carta` hardcoded every Ace to 11 with no
    downgrade and `Mano` summed raw values, so two Aces scored 22 — an immediate *incorrect*
    bust — and A+5 could never be played as soft 16. **Fixed:** `Hand.total()`/`isSoft()`
-   count every Ace as 11, then downgrade Aces one at a time while the total exceeds 21.
+   count every Ace as 1, then count one Ace as 11 if that stays at 21 or under (two Aces at
+   11 always bust, so at most one ever can).
    **Proven by:** `HandTest.twoAcesScoreAsTwelveNotABust`,
    `HandTest.aceDowngradesToAvoidBustWithMultipleCards`.
 2. **A dealer blackjack was structurally undetectable.** `Partita.go()` dealt the dealer one
    card; the second only arrived in the draw-to-17 loop, so there was no hole card and no
    peek — players could hit, double or split into a hand already lost to a natural.
-   **Fixed:** the dealer gets two cards up front and the hole card is peeked whenever the
-   up-card is an Ace or ten (the only two-card-21 cases); a dealer natural ends the round at
+   **Fixed:** the dealer gets two cards up front and the hole card is peeked at once (a
+   natural always shows its Ace or ten face-up, so `Dealer.hasBlackjack()` alone is exactly
+   the casino peek); a dealer natural ends the round at
    once — player natural pushes, anything else loses. **Proven by:**
    `BlackjackTableTest.dealerBlackjackEndsTheRoundBeforeThePlayerCanAct`,
    `...dealerBlackjackAgainstPlayerBlackjackIsAPush`.
 3. **Split Aces could be hit.** `Partita.play()` offered the same menu regardless of the
    split pair. **Fixed:** `BlackjackTable.split()` deals exactly one card to each and forces
-   a stand for Aces (`Hand.markSplitAces()`). **Proven by:**
+   a stand for Aces (`Hand.stand()` on both). **Proven by:**
    `...splitAcesGetExactlyOneCardEachAndCannotBeHitAgain` — which deliberately uses a soft 20,
    a hand the generic "21 locks" rule wouldn't catch.
 4. **No split-vs-natural distinction.** The check was `mano.getValue() == 21` with no split

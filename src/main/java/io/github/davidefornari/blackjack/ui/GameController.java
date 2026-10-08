@@ -63,14 +63,13 @@ public final class GameController {
     private enum Phase { SETUP, BETTING, AWAITING_INSURANCE, PLAYER_TURN, ROUND_OVER, GAME_OVER, CASHED_OUT }
 
     private static final long DEFAULT_BANKROLL = 1000;
-    private static final long[] CHIP_DENOMINATIONS = {5, 10, 25, 50, 100};
     /**
      * The table minimum, and the real end-of-session threshold: bets are placed in chips, so a
      * bankroll below the smallest chip can't be wagered at all even though it isn't zero.
      * Checking for zero alone left 1-4 chips looking like a live game with every chip button
      * and Deal disabled and no way out of BETTING.
      */
-    private static final long MINIMUM_BET = CHIP_DENOMINATIONS[0];
+    private static final long MINIMUM_BET = ChipView.DENOMINATIONS.get(0);
 
     private final StackPane root = new StackPane();
     private final VBox setupOverlay;
@@ -147,6 +146,7 @@ public final class GameController {
     private List<Long> lastBetChips = List.of();
     private long startingBankroll;
     private boolean showCardCount;
+    private CountingSystem countingSystem;
     private Stage stage;
     private GameRules pendingRules = GameRules.standard();
 
@@ -529,7 +529,7 @@ public final class GameController {
         row.getStyleClass().add("chip-rail");
         row.setAlignment(Pos.CENTER);
         double size = ChipView.DIAMETER + 10;
-        for (long denomination : CHIP_DENOMINATIONS) {
+        for (long denomination : ChipView.DENOMINATIONS) {
             ImageView icon = new ImageView(ChipView.imageFor(denomination));
             icon.setFitWidth(size);
             icon.setFitHeight(size);
@@ -650,7 +650,7 @@ public final class GameController {
 
         player = new Player(name, bankroll);
         startingBankroll = bankroll;
-        player.setPreferredCountingSystem(countingCombo.getValue());
+        countingSystem = countingCombo.getValue();
         showCardCount = showCountCheckBox.isSelected();
         GameRules rules = pendingRules;
         Shoe shoe = new Shoe(rules.deckCount(), rules.penetrationPercent());
@@ -828,9 +828,8 @@ public final class GameController {
         bankrollLabel.setText(player.name() + " — Bankroll: " + player.bankroll());
         String shoeInfo = "Shoe: " + table.cardsRemainingInShoe() + " cards left";
         if (showCardCount) {
-            CountingSystem system = player.preferredCountingSystem();
-            shoeInfo += "   |   " + system.displayName() + " count: "
-                    + formatSigned(table.runningCount(system));
+            shoeInfo += "   |   " + countingSystem.displayName() + " count: "
+                    + formatSigned(table.runningCount(countingSystem));
         }
         shoeInfoLabel.setText(shoeInfo);
 
@@ -845,7 +844,7 @@ public final class GameController {
         boolean sessionOver = phase == Phase.GAME_OVER || phase == Phase.CASHED_OUT;
 
         long betTotal = currentBetTotal();
-        for (long denomination : CHIP_DENOMINATIONS) {
+        for (long denomination : ChipView.DENOMINATIONS) {
             boolean wouldExceedBankroll = betTotal + denomination > player.bankroll();
             chipButtonsByDenomination.get(denomination).setDisable(!betting || wouldExceedBankroll);
         }
@@ -985,19 +984,13 @@ public final class GameController {
     }
 
     private void animateIn(List<CardView> views) {
-        SequentialTransition sequence = new SequentialTransition();
-        long delay = 0;
-        for (CardView view : views) {
-            view.setOpacity(0);
-            FadeTransition fade = new FadeTransition(Duration.millis(180), view);
-            fade.setFromValue(0);
+        for (int i = 0; i < views.size(); i++) {
+            views.get(i).setOpacity(0);
+            FadeTransition fade = new FadeTransition(Duration.millis(180), views.get(i));
             fade.setToValue(1);
-            PauseTransition pause = new PauseTransition(Duration.millis(delay));
-            SequentialTransition perCard = new SequentialTransition(pause, fade);
-            sequence.getChildren().add(perCard);
-            delay += 90;
+            fade.setDelay(Duration.millis(i * 90));
+            fade.play();
         }
-        sequence.play();
     }
 
     private Long parsePositiveLong(String text) {
