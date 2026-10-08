@@ -34,10 +34,11 @@ exception thrown" proof that a visual change landed: the window icon work below 
 checks for two rounds while still being visibly broken. UI work is done when the project
 owner has *looked at the running window*, or when a screenshot has been checked pixel-by-pixel.
 
-**Last verified 2026-10-07:** `mvn test` 42/42 green. The keyboard shortcuts, remembered bet
-and Leave Table flow were driven under Xvfb on Linux (`-Djavafx.platform=linux`) with
-synthetic key events and checked from scene snapshots — **not yet looked at by the owner** in
-the real window. Last owner-confirmed window: 2026-09-29, after the settlement/bankroll fixes.
+**Last verified 2026-10-08:** `mvn test` 42/42 green, and the owner ran the window on the
+`engine-and-ui-trims` branch, which includes everything since 2026-10-07: keyboard shortcuts,
+remembered bet, Leave Table, the shared overlay helpers and the flat card fade-in stagger.
+The session's own machine had no JDK or Maven, so every change from that day was compiled and
+checked only on the owner's other machine.
 
 ## Architecture
 
@@ -212,7 +213,10 @@ Break these and something subtle fails, usually silently.
   tried were rejected: near-invisible default header text, a system look that broke the felt
   table, and OS-locale button captions (`ButtonType.YES`/`CANCEL` rendered "Sì"/"Annulla" on
   an Italian machine). All four popups are now plain `VBox`es reusing `setup-overlay`/
-  `setup-card`, toggled with `setVisible`/`setManaged` on `root`'s children.
+  `setup-card`. The confirm, settings and insurance ones are built by `overlay(maxWidth,
+  content...)` with `buttonRow(...)`; the setup screen has its own builder (title outside the
+  card). Every popup is toggled with `show(node, visible)`, which sets `visible` and `managed`
+  together — use it for any node that should drop out of layout while hidden.
 - `CheckBox` and `RadioButton` captions are **not** `Label` nodes — a global `Label` text-fill
   rule misses them. They need their own `.setup-card .check-box` / `.radio-button` rules.
 - A `Region` dropped into a `StackPane` stretches to fill it (`maxSize` defaults to
@@ -249,7 +253,9 @@ Break these and something subtle fails, usually silently.
 
 **Assets**
 - Chip denominations map **white=5, red=10, blue=25, green=50, black=100** (the reference
-  sheet has no orange chip, which shifted the original plan one colour down).
+  sheet has no orange chip, which shifted the original plan one colour down). That mapping lives
+  only in `ChipView.loadImages()`; `ChipView.DENOMINATIONS`, the chip rail and `MINIMUM_BET`
+  all derive from it.
 - Every chip stack renders via `ChipView.stack(amount)`: a greedy breakdown into the fewest
   chips, biggest at the bottom. It represents an *amount*, not the click history — 5+10+5+25
   renders as 25+10+10.
@@ -279,7 +285,7 @@ counting defects were fixed (see **Project history**).
    possibly-null stream to `new Image(...)`; a renamed asset surfaces as an NPE — an
    `ExceptionInInitializerError` for `ChipView`'s static map — rather than naming the file.
 4. **`hand-wager-stack` has no CSS rule** despite being applied in `HandPane`.
-5. **`GameController` is 1,098 lines — 47% of the 2,351-line main source tree.** Every overlay
+5. **`GameController` is 1,011 lines — 46% of the 2,198-line main source tree.** Every overlay
    builder, render pass, animation and phase transition lives in one class. Splitting it is
    Large effort, hence its placement in the backlog rather than here.
 6. **After "New Game", the setup form sits over the previous session's table.** `refresh()`
@@ -411,4 +417,21 @@ gotchas**; this is the "what happened when" record.
   became one shared, parameterized overlay to make that possible. "New Game" now appears only
   once a session has ended (out of chips or cashed out) and no longer confirms, since there is
   nothing left to lose at that point; mid-session, "Leave Table" is the way out. The UI was
-  checked under Xvfb from scene snapshots, not yet by the owner.
+  checked under Xvfb from scene snapshots, then by the owner in the real window on 2026-10-08.
+- **2026-10-08** — Two over-engineering passes (ponytail review and repo audit). Straight to
+  master, one small commit each: the keyboard filter moved from a `sceneProperty` listener to
+  the stage in `attachStage()`, and the redundant visible/disabled guard before `fire()` went
+  (`Button.fire()` already ignores a disabled button); dead `Player.isBankrupt()` and
+  `BlackjackTable.rules()` deleted, `onHit`/`onStand`/`onDouble`/`onSplit` inlined, a
+  `CountingSystem.toString()` replacing the combo's `StringConverter`; and the shared
+  `overlay()`/`buttonRow()`/`show()` helpers replacing three copies of the overlay
+  construction and every paired `setVisible`/`setManaged`. Then on the `engine-and-ui-trims`
+  PR: `Hand.total()`/`isSoft()` share one "all Aces as 1, add 10 if it fits" calculation;
+  the test-only `doubled`/`splitAces` flags removed (split Aces just `stand()`);
+  `Dealer.showsAceOrTen()` dropped, since `hasBlackjack()` implies it; the counting-system
+  choice moved from `Player` to `GameController`; `Suit.Color` became `Suit.isRed()`; chip
+  values come from `ChipView.DENOMINATIONS` only; and `animateIn()` staggers each card a flat
+  90ms instead of compounding pauses (the 5th card used to wait ~1.6s). Deliberately not done:
+  reusing `ChipView` for the chip rail's icons, since it would add the `.chip` drop shadow to
+  the rail. Main source 2,351 → 2,198 lines; tests unchanged at 42 (three assertions on the
+  deleted flags removed).
