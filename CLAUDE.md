@@ -17,8 +17,8 @@ feature set (multi-deck shoe, betting, hit/stand/double/split, four card-countin
 fixes the bugs documented below, adds a Maven build, and replaces `Scanner` I/O with a GUI.
 
 **Stack:** JDK 21 + JavaFX 21.0.7 (`org.openjfx`, `win` classifier — Windows-only for now),
-Maven, JUnit 5. No FXML (the scene graph is wired in `GameController`, so every binding is
-grep-able in one place). Face-up cards are styled text/shapes, not image assets — only the
+Maven, JUnit 5. No FXML (the scene graph is wired in Java, in `GameController` and the panes it
+composes, so every binding is grep-able). Face-up cards are styled text/shapes, not image assets — only the
 card back, the chips and the window icon are real images.
 
 ## Build & run
@@ -35,13 +35,14 @@ checks for two rounds while still being visibly broken. UI work is done when the
 owner has *looked at the running window*, or when a screenshot has been checked pixel-by-pixel.
 
 **Last verified 2026-10-08:** `mvn test` 44/44 green, and the owner ran the window on the
-`card-deal-animation` branch, which includes everything since 2026-10-07: keyboard
+`split-game-controller` branch, which includes everything since 2026-10-07: keyboard
 shortcuts, remembered bet, Leave Table, the shared overlay helpers, the chip rail reusing
 `ChipView` (no drop shadow on the rail, unchanged on bet piles), the true count (shown under
 Hi-Lo, absent under Red Seven), the setup form on bare felt, the counting guide behind the
 setup form's **?** button (scrolling in a short window), Esc closing popups, the lost
 insurance bet on the message line during play, the deck, cards dealt off it at any window
-size (deal order, fast hits, splits, dealer turn, insurance) and the Rider Back card back.
+size (deal order, fast hits, splits, dealer turn, insurance), the Rider Back card back, and
+every flow again after the `GameController` split (table, popups, banners).
 The session's own machine had no JDK or Maven, so every change from that day was compiled and
 checked only on the owner's other machine.
 
@@ -61,9 +62,12 @@ payout as an exact ratio) → `BlackjackTable` (one round: deal → optional ins
 player turns → dealer turn → settle) → `RoundOutcome`/`Settlement`/`InsuranceSettlement`.
 
 `ui/`: `BlackjackApp` (entry point, loads the window icon via `AppIcon`) → `GameController`
-(owns the `BlackjackTable`, builds and refreshes the whole scene graph, all button and keyboard
-wiring) →
-`CardView`/`HandPane`/`ChipView` (reusable view components).
+(owns the `BlackjackTable` and the session's phases; builds the setup screen, controls area and
+insurance popup; refreshes everything; all button and keyboard wiring) → the panes it composes:
+`TablePane` (the felt's centre column: dealer row with the deck, message line, player hands,
+and the deal animation), `OverlayPane` (the in-theme popup base) with `ConfirmPane`,
+`CountingGuidePane` and `GameSettingsPane`, and `WinLoseBannerPane` → `CardView`/`HandPane`/
+`ChipView` (reusable view components).
 
 ## Naming & file conventions
 
@@ -218,15 +222,17 @@ Break these and something subtle fails, usually silently.
 - **Prefer a custom in-theme overlay to `Dialog`/`Alert`.** Both stock dialogs this project
   tried were rejected: near-invisible default header text, a system look that broke the felt
   table, and OS-locale button captions (`ButtonType.YES`/`CANCEL` rendered "Sì"/"Annulla" on
-  an Italian machine). All five popups are now plain `VBox`es reusing `setup-overlay`/
-  `setup-card`. The confirm, settings, insurance and counting-guide ones are built by `overlay(maxWidth,
-  content...)` with `buttonRow(...)`; the setup screen has its own builder (title outside the
-  card). Every popup is toggled with `show(node, visible)`, which sets `visible` and `managed`
-  together — use it for any node that should drop out of layout while hidden.
+  an Italian machine). Every popup reuses `setup-overlay`/`setup-card`. The confirm, settings,
+  guide and insurance popups are `OverlayPane`s, opened and closed with `open()`/`close()`
+  (both set `visible` and `managed` together) and ending in `OverlayPane.buttonRow(...)`. A
+  subclass whose content uses its own fields calls `super(maxWidth)` and then `setContent(...)`,
+  since fields don't exist yet while `super(...)` runs. The setup screen has its own builder
+  (title outside the card) and, like any other node that must drop out of layout while hidden,
+  is toggled with `GameController.show(node, visible)`.
 - `CheckBox` and `RadioButton` captions are **not** `Label` nodes — a global `Label` text-fill
   rule misses them. They need their own `.setup-card .check-box` / `.radio-button` rules.
 - A `Region` dropped into a `StackPane` stretches to fill it (`maxSize` defaults to
-  `Double.MAX_VALUE`). The outcome banner needed `setMaxHeight(Region.USE_PREF_SIZE)` to read
+  `Double.MAX_VALUE`). `WinLoseBannerPane` needed `setMaxHeight(Region.USE_PREF_SIZE)` to read
   as a band instead of covering the window. Applies to any future overlay on `root`.
 - **The window has no fixed size.** `BlackjackApp` builds `new Scene(controller.getRoot())`
   with no dimensions and `growToFitContent()` (end of every `refresh()`) grows the stage,
@@ -260,17 +266,18 @@ Break these and something subtle fails, usually silently.
   come out one line tall and the pane scrolls even with room to spare. The counting guide
   binds `prefViewportHeight` to the text's laid-out height; copy that for any future
   scrolling text. Its background needs the transparent `setup-scroll` rule on the felt.
-- The single confirmation overlay is shared: `showConfirmOverlay(title, message, confirmText,
+- The single confirmation popup is shared: `ConfirmPane.ask(title, message, confirmText,
   action)`. The `setup-title` font truncates past ~10 characters at the card's 340px width, so
   keep confirm titles short ("Cash Out?" — "Leave the Table" rendered as "Leave the T...").
-- **A card keeps one `CardView` for the whole round.** `cardViews` maps each `Card` *instance*
+- **A card keeps one `CardView` for the whole round** (all in `TablePane`, which the
+  controller drives through `clear()` during BETTING and `show(...)` otherwise). `cardViews` maps each `Card` *instance*
   to its view (an `IdentityHashMap`: a 6-deck shoe holds equal copies, and every shoe rebuild
   creates fresh `Card` objects), plus `holeCardView` for the face-down hole card. Both clear
   only in BETTING, when the table is empty. The render pass must fetch views through
   `viewFor()`, never build `CardView`s itself: a new view is what queues a deal, and reusing
   the old one is what lets a card in flight keep flying across a refresh.
-- **The deal animates `translate`, never layout position.** `animateDeals()` runs after the
-  layout pass (`Platform.runLater`, after `growToFitContent()`), offsets each new card onto
+- **The deal animates `translate`, never layout position.** `TablePane.dealNewCards()` runs
+  after the layout pass (`Platform.runLater`; `refresh()` calls it after `growToFitContent()`), offsets each new card onto
   the deck's top card via `sceneToLocal`, and eases the offset back to 0. The card always
   lands in its real slot whatever moves mid-flight. Deals are sorted by position in hand with
   the player first, which reproduces the table's player-dealer-player-dealer order. A
@@ -311,9 +318,10 @@ counting defects were fixed (see **Project history**).
 
 ### Low impact
 
-1. **`GameController` is 1,202 lines — 50% of the 2,395-line main source tree.** Every overlay
-   builder, render pass, animation and phase transition lives in one class. Splitting it is
-   Large effort, hence its placement in the backlog rather than here.
+1. **`GameController` is still 766 lines — 30% of the 2,529-line main source tree.** The
+   self-contained parts are out (table, three popups, banner). What remains (setup screen,
+   insurance popup, controls, every phase transition) all reads or drives the round's state.
+   Splitting further needs callbacks both ways, hence its place in the backlog.
 
 ## Improvement backlog
 
@@ -351,8 +359,9 @@ Ordered by value per unit of effort. Items marked ⟵ are pulled from the old ro
   need to loop over players instead of assuming one.
 
 ### Large effort / structural
-- **Split `GameController`** (issue 1) — extract the overlay builders and the render pass at
-  minimum. Do this before the class grows again, not as a standalone refactor sprint.
+- **Split `GameController` further** (issue 1) — the setup screen and insurance popup are the
+  next candidates (about 45 and 65 lines), but Sit Down reads five setup fields back and the
+  insurance buttons drive the round. Only worth the callbacks once the class grows again.
 - **Move to FXML + CSS** if the UI grows much further ⟵ — skipped so far because hand-authored
   `fx:id` wiring couldn't be verified without running it, and the single-file scene graph is
   still grep-able.
@@ -488,6 +497,14 @@ gotchas**; this is the "what happened when" record.
   (United States Playing Card Company artwork and trademark). The owner confirmed usage
   rights before it was committed, as with the window icon. Known issues 2 → 1; main source
   → 2,395 lines.
+  Then the `split-game-controller` PR, measured first and done as three owner-checked
+  commits: `TablePane` (the felt's centre column and everything about cards on it), the
+  `OverlayPane` base with `ConfirmPane`, `CountingGuidePane` and `GameSettingsPane`, and
+  `WinLoseBannerPane`. `GameController` 1,202 → 766 lines; the new files add 570, mostly
+  imports and javadoc, so the main tree grew to 2,529. Setup and insurance were
+  deliberately left in: both are tied to the round's flow, and moving them would trade
+  direct field access for callbacks. `handStatusText` stayed too, passed to
+  `TablePane.show()` as a function, since the insurance preview uses it as well.
 
 
 ## graphify
