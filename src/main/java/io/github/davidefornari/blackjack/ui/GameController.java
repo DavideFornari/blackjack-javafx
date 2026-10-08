@@ -1030,7 +1030,7 @@ public final class GameController {
         } else if (phase == Phase.ROUND_OVER) {
             messageLabel.setText(summarizeRound());
         } else if (phase == Phase.PLAYER_TURN) {
-            messageLabel.setText("Your move");
+            messageLabel.setText("Your move" + insuranceNote());
         } else if (phase == Phase.AWAITING_INSURANCE) {
             messageLabel.setText("Insurance?");
         } else if (!lastBetChips.isEmpty() && placedChips.equals(lastBetChips)) {
@@ -1051,12 +1051,20 @@ public final class GameController {
         else if (!anyWin) summary = "Push";
         else summary = "Round over";
 
+        return summary + insuranceNote();
+    }
+
+    /**
+     * The side bet's result when insurance was taken this round, else "". The engine settles it
+     * at the dealer peek, so by the player's turn it has already been lost.
+     */
+    private String insuranceNote() {
         return table.lastInsuranceSettlement()
                 .filter(ins -> ins.amountWagered() > 0)
-                .map(ins -> summary + (ins.won()
+                .map(ins -> ins.won()
                         ? " — Insurance paid +" + (ins.payout() - ins.amountWagered())
-                        : " — Insurance lost -" + ins.amountWagered()))
-                .orElse(summary);
+                        : " — Insurance lost -" + ins.amountWagered())
+                .orElse("");
     }
 
     private void animateIn(List<CardView> views) {
