@@ -46,12 +46,15 @@ import javafx.stage.Stage;
 import javafx.util.Duration;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Owns the whole game session (setup -> betting -> optional insurance decision ->
@@ -91,6 +94,13 @@ public final class GameController {
     private final Label bannerAmountLabel = new Label();
     private final VBox winLoseBanner = new VBox(4, bannerTitleLabel, bannerAmountLabel);
     private SequentialTransition bannerAnimation;
+
+    /**
+     * Cards already on screen this round, so refresh() fades in only new ones. By instance, not
+     * value: a 6-deck shoe holds equal copies, and every rebuild deals fresh Card objects.
+     */
+    private final Set<Card> shownCards = Collections.newSetFromMap(new IdentityHashMap<>());
+    private boolean holeCardShown;
 
     private final List<Long> placedChips = new ArrayList<>();
     private final Map<Long, Button> chipButtonsByDenomination = new LinkedHashMap<>();
@@ -909,6 +919,10 @@ public final class GameController {
         }
         shoeInfoLabel.setText(shoeInfo);
 
+        if (phase == Phase.BETTING) { // the table is empty between rounds, so every card dealt next is new
+            shownCards.clear();
+            holeCardShown = false;
+        }
         renderDealer();
         renderPlayerHands();
         renderBetStack();
@@ -953,15 +967,22 @@ public final class GameController {
         // finished hand (it only resets inside startRound()) — hide it so the table reads as empty.
         List<Card> cards = phase == Phase.BETTING ? List.of() : dealer.hand().cards();
         List<CardView> views = new ArrayList<>();
+        List<CardView> fresh = new ArrayList<>();
         for (int i = 0; i < cards.size(); i++) {
             boolean hidden = i == 1 && !dealer.isHoleCardRevealed();
-            views.add(hidden ? CardView.faceDown() : CardView.faceUp(cards.get(i)));
+            CardView view = hidden ? CardView.faceDown() : CardView.faceUp(cards.get(i));
+            views.add(view);
+            // The hole card is fresh twice: once dealt face down, again when revealed.
+            if (hidden ? !holeCardShown : shownCards.add(cards.get(i))) {
+                fresh.add(view);
+            }
+            holeCardShown |= hidden;
         }
         dealerPane.setCaption("Dealer");
         dealerPane.setCards(views);
         dealerPane.setTotalText(phase != Phase.BETTING && dealer.isHoleCardRevealed()
                 ? "Total: " + dealer.hand().total() : "");
-        animateIn(views);
+        animateIn(fresh);
     }
 
     private void renderPlayerHands() {
@@ -976,15 +997,20 @@ public final class GameController {
             pane.setCaption(hands.size() > 1 ? "Hand " + (i + 1) : "Your Hand");
 
             List<CardView> views = new ArrayList<>();
+            List<CardView> fresh = new ArrayList<>();
             for (Card card : hand.cards()) {
-                views.add(CardView.faceUp(card));
+                CardView view = CardView.faceUp(card);
+                views.add(view);
+                if (shownCards.add(card)) {
+                    fresh.add(view);
+                }
             }
             pane.setCards(views);
             pane.setWager(hand.wager());
             pane.setTotalText(handStatusText(hand));
             pane.setActive(phase == Phase.PLAYER_TURN && i == table.activeHandIndex());
             playerHandsBox.getChildren().add(pane);
-            animateIn(views);
+            animateIn(fresh);
         }
     }
 
