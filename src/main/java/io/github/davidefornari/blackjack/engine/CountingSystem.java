@@ -42,7 +42,7 @@ public enum CountingSystem {
         public int tagFor(Card card) {
             Rank rank = card.rank();
             if (rank.hardValue() >= 2 && rank.hardValue() <= 6) return 1;
-            if (rank == Rank.SEVEN && card.suit().color() == Suit.Color.RED) return 1;
+            if (rank == Rank.SEVEN && card.suit().isRed()) return 1;
             if (rank.isTenValue() || rank.isAce()) return -1;
             return 0;
         }

@@ -18,11 +18,6 @@ public final class Dealer {
         return hand.cards().get(0);
     }
 
-    public boolean showsAceOrTen() {
-        Rank rank = upCard().rank();
-        return rank.isAce() || rank.isTenValue();
-    }
-
     public boolean hasBlackjack() {
         return hand.isNaturalBlackjack();
     }

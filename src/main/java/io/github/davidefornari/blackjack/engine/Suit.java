@@ -1,26 +1,22 @@
 package io.github.davidefornari.blackjack.engine;
 
 public enum Suit {
-    CLUBS("♣", Color.BLACK),
-    DIAMONDS("♦", Color.RED),
-    HEARTS("♥", Color.RED),
-    SPADES("♠", Color.BLACK);
-
-    public enum Color { RED, BLACK }
+    CLUBS("♣"),
+    DIAMONDS("♦"),
+    HEARTS("♥"),
+    SPADES("♠");
 
     private final String symbol;
-    private final Color color;
 
-    Suit(String symbol, Color color) {
+    Suit(String symbol) {
         this.symbol = symbol;
-        this.color = color;
     }
 
     public String symbol() {
         return symbol;
     }
 
-    public Color color() {
-        return color;
+    public boolean isRed() {
+        return this == DIAMONDS || this == HEARTS;
     }
 }

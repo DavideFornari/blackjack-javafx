@@ -11,7 +11,6 @@ public final class Player {
     private final String name;
     private long bankroll;
     private final List<Hand> hands = new ArrayList<>();
-    private CountingSystem preferredCountingSystem = CountingSystem.HI_LO;
 
     public Player(String name, long startingBankroll) {
         if (startingBankroll <= 0) {
@@ -41,8 +40,7 @@ public final class Player {
         bankroll += amount;
     }
 
-
-    /** Live, mutable — {@code BlackjackRound} appends hands here when the player splits. */
+    /** Live, mutable — {@code BlackjackTable} appends hands here when the player splits. */
     public List<Hand> hands() {
         return hands;
     }
@@ -54,13 +52,5 @@ public final class Player {
     void resetForNewRound() {
         hands.clear();
         hands.add(new Hand());
-    }
-
-    public CountingSystem preferredCountingSystem() {
-        return preferredCountingSystem;
-    }
-
-    public void setPreferredCountingSystem(CountingSystem system) {
-        this.preferredCountingSystem = system;
     }
 }

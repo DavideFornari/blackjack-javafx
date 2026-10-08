@@ -22,6 +22,9 @@ public final class ChipView extends ImageView {
 
     private static final Map<Long, Image> IMAGES = loadImages();
 
+    /** Every chip value, smallest first. */
+    public static final List<Long> DENOMINATIONS = List.copyOf(IMAGES.keySet());
+
     public ChipView(long denomination) {
         super(imageFor(denomination));
         setFitWidth(DIAMETER);
@@ -41,12 +44,9 @@ public final class ChipView extends ImageView {
 
     /** Greedily breaks a wager down into the largest available chip denominations, for rendering a stack that represents an amount rather than a literal click history (e.g. after a split or double, where the wager is a number, not a list of clicks). */
     public static List<Long> breakdown(long amount) {
-        List<Long> denominations = new ArrayList<>(IMAGES.keySet());
-        denominations.sort((a, b) -> Long.compare(b, a));
-
         List<Long> chips = new ArrayList<>();
         long remaining = amount;
-        for (long denomination : denominations) {
+        for (long denomination : DENOMINATIONS.reversed()) {
             while (remaining >= denomination) {
                 chips.add(denomination);
                 remaining -= denomination;
