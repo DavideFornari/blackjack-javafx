@@ -75,6 +75,7 @@ public final class GameController {
     private final VBox setupOverlay;
     private final VBox confirmOverlay;
     private final VBox gameSettingsOverlay;
+    private final VBox countingGuideOverlay;
     private final VBox insuranceOverlay;
     private final BorderPane tableLayout;
 
@@ -154,6 +155,7 @@ public final class GameController {
         setupOverlay = buildSetupOverlay();
         confirmOverlay = buildConfirmOverlay();
         gameSettingsOverlay = buildGameSettingsOverlay();
+        countingGuideOverlay = buildCountingGuideOverlay();
         insuranceOverlay = buildInsuranceOverlay();
         tableLayout = buildTableLayout();
 
@@ -173,11 +175,11 @@ public final class GameController {
         winLoseBanner.setVisible(false);
         winLoseBanner.setOpacity(0);
 
-        // gameSettingsOverlay is opened from a button inside setupOverlay, so it must come
-        // after it here to actually render on top of it.
+        // gameSettingsOverlay and countingGuideOverlay are opened from buttons inside
+        // setupOverlay, so they must come after it here to actually render on top of it.
         root.getChildren().addAll(
                 tableLayout, shoeInfoLabel, winLoseBanner, confirmOverlay, insuranceOverlay,
-                setupOverlay, gameSettingsOverlay);
+                setupOverlay, gameSettingsOverlay, countingGuideOverlay);
         wireActions();
         refresh();
     }
@@ -234,6 +236,11 @@ public final class GameController {
         Button gameSettingsButton = new Button("Game Settings");
         gameSettingsButton.setOnAction(e -> showGameSettingsOverlay());
 
+        Button countingGuideButton = new Button("?");
+        countingGuideButton.getStyleClass().add("setup-help-button");
+        countingGuideButton.setAccessibleText("Card-counting guide");
+        countingGuideButton.setOnAction(e -> show(countingGuideOverlay, true));
+
         Button sitDownButton = new Button("Sit Down");
         sitDownButton.getStyleClass().add("primary-button");
         sitDownButton.setOnAction(e -> onSitDown());
@@ -241,7 +248,7 @@ public final class GameController {
         VBox form = new VBox(10,
                 new Label("Player name"), nameField,
                 new Label("Starting bankroll"), bankrollField,
-                new Label("Card-counting system"), countingCombo,
+                new Label("Card-counting system"), buttonRow(countingCombo, countingGuideButton),
                 showCountCheckBox,
                 gameSettingsButton,
                 rulesSummaryLabel,
@@ -291,6 +298,51 @@ public final class GameController {
         confirmActionButton.setText(confirmText);
         confirmAction = onConfirm;
         show(confirmOverlay, true);
+    }
+
+    /** What each system on the setup form counts, how it is played, and which to pick. */
+    private VBox buildCountingGuideOverlay() {
+        Label title = new Label("Counting");
+        title.getStyleClass().add("setup-title");
+
+        Label tipsHeading = new Label("Tips on real betting");
+        tipsHeading.getStyleClass().add("setup-heading");
+
+        VBox text = new VBox(10,
+                wrapped("Every card dealt moves the running count. A high count means the shoe left "
+                        + "is rich in tens and Aces, which favours you: bet more. The table keeps the "
+                        + "count for you and, for balanced systems, also shows the true count: the "
+                        + "running count divided by the decks left, the number to bet on."),
+                wrapped("Hi-Lo: 2-6 count +1, 7-9 count 0, tens and Aces -1. Level 1 and balanced, "
+                        + "the standard count. Raise your bet as the true count climbs past +1."),
+                wrapped("Red Seven: Hi-Lo plus red 7s at +1. Unbalanced, so it starts at -2 per deck "
+                        + "and is read straight off the running count: raise your bet once it reaches "
+                        + "0. Arnold Snyder's count, built to need no division."),
+                wrapped("Zen Count: 2, 3, 7 count +1, 4-6 +2, tens -2, Aces -1. Level 2 and balanced, "
+                        + "also Snyder's: weighting the cards more finely tracks the shoe more "
+                        + "accurately than Hi-Lo."),
+                wrapped("Omega II: 2, 3, 7 count +1, 4-6 +2, 9 -1, tens -2, 8s and Aces 0. Level 2 "
+                        + "and balanced, by Bryce Carlson. Leaving the Ace out sharpens playing "
+                        + "decisions; for betting, players add a separate Ace count, which this table "
+                        + "doesn't show."),
+                tipsHeading,
+                wrapped("At a real table you keep the count yourself, in your head, at dealing speed. "
+                        + "Start with Hi-Lo. Pick Red Seven if dividing by the decks left is too much: "
+                        + "it gets about 80% of Hi-Lo's gain for less work. Move to Zen or Omega II "
+                        + "only once Hi-Lo is automatic: a complex count played slowly or with mistakes "
+                        + "earns less than a simple one played well."));
+
+        Button closeButton = new Button("Close");
+        closeButton.getStyleClass().add("primary-button");
+        closeButton.setOnAction(e -> show(countingGuideOverlay, false));
+
+        return overlay(480, title, text, buttonRow(closeButton));
+    }
+
+    private static Label wrapped(String text) {
+        Label label = new Label(text);
+        label.setWrapText(true);
+        return label;
     }
 
     /** A hidden in-theme popup: a {@code setup-card} of {@code content}, centred on a dimming {@code setup-overlay}. */
@@ -608,7 +660,8 @@ public final class GameController {
      */
     private void onKeyPressed(KeyEvent event) {
         boolean overlayShowing = setupOverlay.isVisible() || gameSettingsOverlay.isVisible()
-                || confirmOverlay.isVisible() || insuranceOverlay.isVisible();
+                || confirmOverlay.isVisible() || insuranceOverlay.isVisible()
+                || countingGuideOverlay.isVisible();
         if (overlayShowing) {
             return;
         }
