@@ -18,8 +18,8 @@ fixes the bugs documented below, adds a Maven build, and replaces `Scanner` I/O 
 
 **Stack:** JDK 21 + JavaFX 21.0.7 (`org.openjfx`, `win` classifier — Windows-only for now),
 Maven, JUnit 5. No FXML (the scene graph is wired in `GameController`, so every binding is
-grep-able in one place). Table cards are styled text/shapes, not image assets — only chips
-and the window icon are real images.
+grep-able in one place). Face-up cards are styled text/shapes, not image assets — only the
+card back, the chips and the window icon are real images.
 
 ## Build & run
 
@@ -35,12 +35,13 @@ checks for two rounds while still being visibly broken. UI work is done when the
 owner has *looked at the running window*, or when a screenshot has been checked pixel-by-pixel.
 
 **Last verified 2026-10-08:** `mvn test` 44/44 green, and the owner ran the window on the
-`insurance-badge` branch, which includes everything since 2026-10-07: keyboard
-shortcuts, remembered bet, Leave Table, the shared overlay helpers, the flat card fade-in
-stagger, the chip rail reusing `ChipView` (no drop shadow on the rail, unchanged on bet piles),
-the true count (shown under Hi-Lo, absent under Red Seven), the setup form on bare felt, the
-counting guide behind the setup form's **?** button (scrolling in a short window), Esc
-closing popups and the lost insurance bet on the message line during play.
+`card-deal-animation` branch, which includes everything since 2026-10-07: keyboard
+shortcuts, remembered bet, Leave Table, the shared overlay helpers, the chip rail reusing
+`ChipView` (no drop shadow on the rail, unchanged on bet piles), the true count (shown under
+Hi-Lo, absent under Red Seven), the setup form on bare felt, the counting guide behind the
+setup form's **?** button (scrolling in a short window), Esc closing popups, the lost
+insurance bet on the message line during play, the deck, cards dealt off it at any window
+size (deal order, fast hits, splits, dealer turn, insurance) and the Rider Back card back.
 The session's own machine had no JDK or Maven, so every change from that day was compiled and
 checked only on the owner's other machine.
 
@@ -95,7 +96,8 @@ only for a real family (`chips/`, five files); a one-off sits directly under `ui
 is a *processed* artifact (cropped, background removed, resized) — never the raw source.
 
 **`docs/` reference assets** — provenance only, never loaded at runtime:
-`<subject>-reference.<ext>` (`chip-reference.png`, `icon-reference.png`), kept exactly as
+`<subject>-reference.<ext>` (`chip-reference.png`, `icon-reference.png`,
+`card-back-reference.jpg`), kept exactly as
 obtained, watermark and all. Processing is a one-off script that is *not* checked in; the
 steps belong in **Project history** below.
 
@@ -261,6 +263,22 @@ Break these and something subtle fails, usually silently.
 - The single confirmation overlay is shared: `showConfirmOverlay(title, message, confirmText,
   action)`. The `setup-title` font truncates past ~10 characters at the card's 340px width, so
   keep confirm titles short ("Cash Out?" — "Leave the Table" rendered as "Leave the T...").
+- **A card keeps one `CardView` for the whole round.** `cardViews` maps each `Card` *instance*
+  to its view (an `IdentityHashMap`: a 6-deck shoe holds equal copies, and every shoe rebuild
+  creates fresh `Card` objects), plus `holeCardView` for the face-down hole card. Both clear
+  only in BETTING, when the table is empty. The render pass must fetch views through
+  `viewFor()`, never build `CardView`s itself: a new view is what queues a deal, and reusing
+  the old one is what lets a card in flight keep flying across a refresh.
+- **The deal animates `translate`, never layout position.** `animateDeals()` runs after the
+  layout pass (`Platform.runLater`, after `growToFitContent()`), offsets each new card onto
+  the deck's top card via `sceneToLocal`, and eases the offset back to 0. The card always
+  lands in its real slot whatever moves mid-flight. Deals are sorted by position in hand with
+  the player first, which reproduces the table's player-dealer-player-dealer order. A
+  revealed hole card fades in place instead of flying. The deck has `viewOrder` 1, so cards
+  leave over it, not from under it.
+- **The deck is part of the layout, not pinned to coordinates.** The dealer row is `[spacer
+  as wide as the deck | gap | dealer | gap | deck]`, so the dealer stays centred and a long
+  dealer hand widens the window instead of sliding under the deck.
 
 **Assets**
 - Chip denominations map **white=5, red=10, blue=25, green=50, black=100** (the reference
@@ -277,6 +295,10 @@ Break these and something subtle fails, usually silently.
 - Every classpath resource load (`ChipView.load()`, `AppIcon.load()`, the stylesheet in
   `BlackjackApp`) goes through `Objects.requireNonNull(..., "Missing resource " + path)`, so a
   renamed asset fails naming the file. Keep new resource loads on the same pattern.
+- `card-back.png` is 2× the card's 78×110 so it stays sharp on HiDPI, and carries its own
+  transparent rounded corners (8px at 1×): a CSS background image isn't clipped by
+  `-fx-background-radius`. It was processed from `docs/card-back-reference.jpg` by cropping to
+  the card's edges, a LANCZOS resize and an antialiased rounded-rectangle alpha mask.
 - Per-hand wager stacks fall out of the engine for free: `Hand.wager()` already doubles on
   `doubleDown()` and is copied to both hands on `split()`, so no `Map<Hand, List<Long>>`
   bookkeeping is needed.
@@ -287,16 +309,9 @@ Nothing here is a hypothetical — each was confirmed by reading the code on 202
 the list was re-checked against the tree on 2026-10-07, when the test gaps and the shoe and
 counting defects were fixed (see **Project history**).
 
-### Medium impact, small-to-medium effort
-
-1. **`refresh()` re-animates every card on every call.** `renderDealer()`/`renderPlayerHands()`
-   rebuild their panes and call `animateIn()` unconditionally, so hitting re-fades the whole
-   hand and even a chip click re-runs the table's fade-ins. Needs the render pass to animate
-   only genuinely new cards.
-
 ### Low impact
 
-2. **`GameController` is 1,095 lines — 48% of the 2,288-line main source tree.** Every overlay
+1. **`GameController` is 1,202 lines — 50% of the 2,395-line main source tree.** Every overlay
    builder, render pass, animation and phase transition lives in one class. Splitting it is
    Large effort, hence its placement in the backlog rather than here.
 
@@ -304,20 +319,13 @@ counting defects were fixed (see **Project history**).
 
 Ordered by value per unit of effort. Items marked ⟵ are pulled from the old roadmap.
 
-### High impact, medium effort
-- **Animate only new cards** (issue 1) — the single most visible piece of UI polish available,
-  since today every action re-fades the whole table.
-- **Visible deck + deal-from-deck animation.** ⟵ The highest-risk item on this list:
-  coordinate-heavy and unverifiable from tests. Render a face-down stack (3-5 overlapping
-  `CardView.faceDown()` nodes, small offsets) at a fixed table position; on deal, animate a
-  temporary node via `TranslateTransition` between `Node.localToScene()` positions, then swap
-  in the real `CardView`. Iterate with the owner watching the window, not from code review.
-
 ### Medium impact, medium effort
 - **Hole-card flip animation** (`RotateTransition` on the Y-axis, swapping textures at 90°)
-  instead of the current fade-in. ⟵
-- **Stagger the dealer's draw** — `playDealerTurn()` resolves the whole sequence instantly and
-  only the *reveal* is staggered in the UI. ⟵
+  instead of the current fade in place. The hole card already keeps its `holeCardView` until
+  the reveal, so the flip has a stable node to rotate. ⟵
+- **Stagger the dealer's draw** — `playDealerTurn()` resolves the whole sequence instantly.
+  The deal animation now brings the dealer's cards in 150ms apart, but nothing else in the
+  round's result is held back to match. ⟵
 - **Hover/press feedback** on chips and buttons. ⟵
 - **Recent-rounds history strip** (green/red/grey dots). ⟵
 - **Sound effects** (deal, flip, chip, win/lose). ⟵
@@ -343,7 +351,7 @@ Ordered by value per unit of effort. Items marked ⟵ are pulled from the old ro
   need to loop over players instead of assuming one.
 
 ### Large effort / structural
-- **Split `GameController`** (issue 2) — extract the overlay builders and the render pass at
+- **Split `GameController`** (issue 1) — extract the overlay builders and the render pass at
   minimum. Do this before the class grows again, not as a standalone refactor sprint.
 - **Move to FXML + CSS** if the UI grows much further ⟵ — skipped so far because hand-authored
   `fx:id` wiring couldn't be verified without running it, and the single-file scene graph is
@@ -470,6 +478,16 @@ gotchas**; this is the "what happened when" record.
   the round is already over) or lost. The fix is the round-over insurance note shown on the
   "Your move" line too, both coming from one `insuranceNote()`. That's a message suffix, not
   a felt badge; a chip stack on the table would only show a bet that's already gone.
+  Then the `card-deal-animation` PR, built in three owner-checked steps on one branch.
+  (1) Only new cards animate, closing known issue 1. (2) A face-down deck sits to the right
+  of the dealer. (3) New cards fly off the deck into their slots, 150ms apart, in table
+  order, replacing the old flat 90ms fade-in. The backlog had planned a temporary node
+  flown between `localToScene()` points and then swapped for the real card. The real card
+  flying by `translate` replaced that: no swap, and it stays correct when the layout moves
+  mid-flight. The same PR swapped the CSS-gradient card back for the Bicycle "Rider Back"
+  (United States Playing Card Company artwork and trademark). The owner confirmed usage
+  rights before it was committed, as with the window icon. Known issues 2 → 1; main source
+  → 2,395 lines.
 
 
 ## graphify
