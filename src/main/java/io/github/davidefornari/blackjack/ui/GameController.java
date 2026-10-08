@@ -28,10 +28,12 @@ import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.RadioButton;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.control.Slider;
 import javafx.scene.control.TextField;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.control.Tooltip;
+import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.GridPane;
@@ -336,7 +338,16 @@ public final class GameController {
         closeButton.getStyleClass().add("primary-button");
         closeButton.setOnAction(e -> show(countingGuideOverlay, false));
 
-        return overlay(480, title, text, buttonRow(closeButton));
+        // Scrolls only when the window is shorter than the guide. A ScrollPane sizes itself from
+        // its content's unwrapped (one-line) height, so its preferred height follows the text's
+        // laid-out height instead.
+        ScrollPane scroll = new ScrollPane(text);
+        scroll.setFitToWidth(true);
+        scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        scroll.prefViewportHeightProperty().bind(text.heightProperty());
+        scroll.getStyleClass().add("setup-scroll");
+
+        return overlay(480, title, scroll, buttonRow(closeButton));
     }
 
     private static Label wrapped(String text) {
@@ -656,9 +667,19 @@ public final class GameController {
      * Table shortcuts: H/S/D/P for hit, stand, double, split; Enter to deal or start the next
      * round. Each just fires its button, so the button's own enabled state is the only rule.
      * A stage-level filter, so it works whatever has focus — which is also why it stands down
-     * while any overlay is up, where the setup and settings text fields need those keys.
+     * while any overlay is up, where the setup and settings text fields need those keys. Esc
+     * dismisses the topmost popup that has a Close/Cancel; setup and insurance need an answer.
      */
     private void onKeyPressed(KeyEvent event) {
+        if (event.getCode() == KeyCode.ESCAPE) {
+            for (VBox popup : List.of(countingGuideOverlay, gameSettingsOverlay, confirmOverlay)) {
+                if (popup.isVisible()) {
+                    show(popup, false); // exactly what each popup's Close/Cancel button does
+                    event.consume();
+                    return;
+                }
+            }
+        }
         boolean overlayShowing = setupOverlay.isVisible() || gameSettingsOverlay.isVisible()
                 || confirmOverlay.isVisible() || insuranceOverlay.isVisible()
                 || countingGuideOverlay.isVisible();
