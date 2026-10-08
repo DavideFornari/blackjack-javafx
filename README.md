@@ -5,8 +5,8 @@ A graphical, single-player Blackjack table built with JavaFX — a modernized re
 university project (2019).
 
 Multi-deck shoe, chip-based betting, hit/stand/double/split, insurance, and four
-card-counting systems. The game logic lives in a JavaFX-free `engine` package that is
-unit-tested headless.
+card-counting systems with a live running and true count. Cards are dealt off a visible deck.
+The game logic lives in a JavaFX-free `engine` package that is unit-tested headless.
 
 See [CLAUDE.md](CLAUDE.md) for the rules reference, what was fixed from the original,
 and the improvement backlog.
@@ -104,12 +104,39 @@ it grows to fit dealt cards, wager stacks and split hands.
 `Main-Class`, and the JavaFX native modules aren't bundled either. `mvn javafx:run` is the
 supported way to launch. A self-contained installer via `jpackage` is on the backlog.
 
+## Playing
+
+**Setup.** Enter a name and a starting bankroll (default 1000 chips), and pick a
+card-counting system. The **?** next to the system opens a guide: what each system counts,
+how its number is read, and tips for counting at a real table. **Show card count** puts
+the count on the table; it's off by default.
+
+**House rules.** **Game Settings** on the setup screen changes them. They apply from the
+next **Sit Down**.
+
+| Rule | Default |
+|---|---|
+| Decks in the shoe | 6, reshuffled at 50% penetration |
+| Dealer on soft 17 | Stands (S17) |
+| Blackjack pays | 3:2 (6:5 selectable) |
+| Double after split | Allowed |
+| Split hands | Up to 4 |
+| Insurance | Off. When on, it's offered only against a dealer Ace, at half your bet, and pays 2:1. |
+
+**At the table.** Click chips to build a bet (the table minimum is the smallest chip,
+5), then **Deal**. Cards fly off the deck to the right of the dealer, player first. With
+the count shown, the bottom-right badge gives the running count, plus the true count
+(running count per deck left) for the balanced systems: Hi-Lo, Zen Count and Omega II.
+**Leave Table** after any round cashes out with your result; the session also ends when
+your bankroll drops below the table minimum.
+
 ### Keyboard shortcuts
 
 | Key | Action |
 |---|---|
 | `Enter` | Deal; after a round, start the next one |
 | `H` / `S` / `D` / `P` | Hit / Stand / Double / Split |
+| `Esc` | Close the counting guide, Game Settings or a confirmation |
 
 Your last bet is placed again automatically at the start of each round, so `Enter` repeats it.
 
@@ -119,7 +146,7 @@ Your last bet is placed again automatically at the start of each round, so `Ente
 mvn test
 ```
 
-42 JUnit 5 tests covering the engine. They need **no JavaFX runtime and no display**, because
+44 JUnit 5 tests covering the engine. They need **no JavaFX runtime and no display**, because
 the `engine` package has zero JavaFX dependency — so they run fine over SSH, in a container,
 or in CI without a virtual framebuffer.
 
@@ -149,9 +176,14 @@ JavaFX.
 src/main/java/io/github/davidefornari/blackjack/
   engine/   pure Java game logic (no JavaFX dependency, fully unit-tested)
   ui/       JavaFX scene graph, wired directly in Java (no FXML)
-src/main/resources/.../ui/   blackjack.css, chip and window-icon images
+src/main/resources/.../ui/   blackjack.css, card-back, chip and window-icon images
 src/test/java/.../engine/    JUnit 5 tests
+docs/                        original reference images the runtime assets were made from
 ```
+
+In `ui/`, `GameController` runs the session and composes the views: `TablePane` (the
+dealer, deck and player hands, and the deal animation), the popups built on `OverlayPane`,
+and `WinLoseBannerPane`. [CLAUDE.md](CLAUDE.md) has the full architecture.
 
 ## Troubleshooting
 
@@ -171,4 +203,6 @@ force a fresh fetch.
 
 ## License
 
-[MIT](LICENSE)
+The code is [MIT](LICENSE)-licensed. The MIT license doesn't cover the image assets. The card
+back is the Bicycle® "Rider Back" design; Bicycle is a registered trademark of The United
+States Playing Card Company, which owns the design.
