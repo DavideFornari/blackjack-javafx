@@ -32,7 +32,6 @@ import javafx.scene.control.Slider;
 import javafx.scene.control.TextField;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.control.Tooltip;
-import javafx.scene.image.ImageView;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.GridPane;
@@ -530,14 +529,8 @@ public final class GameController {
         row.setAlignment(Pos.CENTER);
         double size = ChipView.DIAMETER + 10;
         for (long denomination : ChipView.DENOMINATIONS) {
-            ImageView icon = new ImageView(ChipView.imageFor(denomination));
-            icon.setFitWidth(size);
-            icon.setFitHeight(size);
-            icon.setPreserveRatio(true);
-            icon.setSmooth(true);
-
             Button chip = new Button();
-            chip.setGraphic(icon);
+            chip.setGraphic(new ChipView(denomination, size));
             chip.getStyleClass().add("chip-button-round");
             chip.setPrefSize(size, size);
             chip.setMinSize(size, size);
