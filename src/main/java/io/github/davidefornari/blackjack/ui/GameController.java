@@ -11,11 +11,7 @@ import io.github.davidefornari.blackjack.engine.Player;
 import io.github.davidefornari.blackjack.engine.RoundOutcome;
 import io.github.davidefornari.blackjack.engine.Settlement;
 import io.github.davidefornari.blackjack.engine.Shoe;
-import javafx.animation.FadeTransition;
-import javafx.animation.ParallelTransition;
 import javafx.animation.PauseTransition;
-import javafx.animation.ScaleTransition;
-import javafx.animation.SequentialTransition;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
@@ -32,7 +28,6 @@ import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
-import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.text.TextAlignment;
@@ -79,10 +74,7 @@ public final class GameController {
     private final Label bankrollLabel = new Label();
     private final Label shoeInfoLabel = new Label();
 
-    private final Label bannerTitleLabel = new Label();
-    private final Label bannerAmountLabel = new Label();
-    private final VBox winLoseBanner = new VBox(4, bannerTitleLabel, bannerAmountLabel);
-    private SequentialTransition bannerAnimation;
+    private final WinLoseBannerPane winLoseBanner = new WinLoseBannerPane();
 
     private final List<Long> placedChips = new ArrayList<>();
     private final Map<Long, Button> chipButtonsByDenomination = new LinkedHashMap<>();
@@ -139,18 +131,6 @@ public final class GameController {
         shoeInfoLabel.getStyleClass().add("count-badge");
         StackPane.setAlignment(shoeInfoLabel, Pos.BOTTOM_RIGHT);
         StackPane.setMargin(shoeInfoLabel, new Insets(0, 16, 16, 0));
-
-        winLoseBanner.getStyleClass().add("win-lose-banner");
-        bannerTitleLabel.getStyleClass().add("win-lose-banner-title");
-        bannerAmountLabel.getStyleClass().add("win-lose-banner-amount");
-        winLoseBanner.setAlignment(Pos.CENTER);
-        // Spans the full table width like a ribbon, but must not stretch to the StackPane's
-        // full height too (Region's default max height is Double.MAX_VALUE) — clamp it to its
-        // own content height so it reads as a horizontal band, not a full-screen overlay.
-        winLoseBanner.setMaxHeight(Region.USE_PREF_SIZE);
-        winLoseBanner.setMouseTransparent(true);
-        winLoseBanner.setVisible(false);
-        winLoseBanner.setOpacity(0);
 
         // gameSettingsOverlay and countingGuideOverlay are opened from buttons inside
         // setupOverlay, so they must come after it here to actually render on top of it.
@@ -352,9 +332,9 @@ public final class GameController {
         if (insurance.isPresent() && insurance.get().won()) {
             long mainHandProfit = settleRound();
             long insuranceProfit = insurance.get().payout() - insurance.get().amountWagered();
-            showBanner("INSURANCE WIN", mainHandProfit + insuranceProfit, "win-lose-banner-win");
+            winLoseBanner.showInsuranceWin(mainHandProfit + insuranceProfit);
         } else if (table.isPlayerTurnComplete()) {
-            showRoundOutcomeBanner(settleRound());
+            winLoseBanner.showOutcome(settleRound());
         } else {
             phase = Phase.PLAYER_TURN;
         }
@@ -528,7 +508,7 @@ public final class GameController {
         if (table.isPlayerTurnComplete()) {
             // Decided at the deal — a natural, or a dealer natural peeked on a ten up-card.
             // The banner is this call site's job too, not just afterPlayerAction()'s.
-            showRoundOutcomeBanner(settleRound());
+            winLoseBanner.showOutcome(settleRound());
         } else {
             phase = Phase.PLAYER_TURN;
         }
@@ -559,7 +539,7 @@ public final class GameController {
 
     private void afterPlayerAction() {
         if (table.isPlayerTurnComplete()) {
-            showRoundOutcomeBanner(settleRound());
+            winLoseBanner.showOutcome(settleRound());
         }
         refresh();
     }
@@ -569,7 +549,7 @@ public final class GameController {
      * GAME_OVER once what's left can't cover {@link #MINIMUM_BET}), and returns the main
      * hand(s)' total profit. Doesn't show a banner itself — callers decide that, since a win against
      * a dealer blackjack the player insured needs its profit folded into a single combined
-     * "INSURANCE WIN" banner instead of its own {@link #showRoundOutcomeBanner}.
+     * "INSURANCE WIN" banner instead of its own {@link WinLoseBannerPane#showOutcome}.
      */
     private long settleRound() {
         table.playDealerTurn();
@@ -583,50 +563,6 @@ public final class GameController {
         lastSettlements = byHand;
         phase = player.bankroll() >= MINIMUM_BET ? Phase.ROUND_OVER : Phase.GAME_OVER;
         return totalProfit;
-    }
-
-    /** Pops up "WIN +N" / "LOST -N" / "PUSH +0" for the main hand(s) — always shown, so a push still gets a result. */
-    private void showRoundOutcomeBanner(long totalProfit) {
-        String title = totalProfit > 0 ? "WIN" : totalProfit < 0 ? "LOST" : "PUSH";
-        String styleClass = totalProfit > 0 ? "win-lose-banner-win"
-                : totalProfit < 0 ? "win-lose-banner-lose" : "win-lose-banner-push";
-        showBanner(title, totalProfit, styleClass);
-    }
-
-    /** Scale+fade pop-in, hold, fade-out for {@code winLoseBanner}. */
-    private void showBanner(String title, long amount, String styleClass) {
-        bannerTitleLabel.setText(title);
-        bannerAmountLabel.setText((amount >= 0 ? "+" : "-") + Math.abs(amount));
-        winLoseBanner.getStyleClass().removeAll("win-lose-banner-win", "win-lose-banner-lose", "win-lose-banner-push");
-        winLoseBanner.getStyleClass().add(styleClass);
-
-        if (bannerAnimation != null) {
-            bannerAnimation.stop();
-        }
-        winLoseBanner.setOpacity(0);
-        winLoseBanner.setScaleX(0.6);
-        winLoseBanner.setScaleY(0.6);
-        winLoseBanner.setVisible(true);
-
-        FadeTransition fadeIn = new FadeTransition(Duration.millis(220), winLoseBanner);
-        fadeIn.setFromValue(0);
-        fadeIn.setToValue(1);
-        ScaleTransition scaleIn = new ScaleTransition(Duration.millis(220), winLoseBanner);
-        scaleIn.setFromX(0.6);
-        scaleIn.setFromY(0.6);
-        scaleIn.setToX(1.0);
-        scaleIn.setToY(1.0);
-        ParallelTransition popIn = new ParallelTransition(fadeIn, scaleIn);
-
-        PauseTransition hold = new PauseTransition(Duration.millis(1100));
-
-        FadeTransition fadeOut = new FadeTransition(Duration.millis(320), winLoseBanner);
-        fadeOut.setFromValue(1);
-        fadeOut.setToValue(0);
-        fadeOut.setOnFinished(e -> winLoseBanner.setVisible(false));
-
-        bannerAnimation = new SequentialTransition(popIn, hold, fadeOut);
-        bannerAnimation.play();
     }
 
     /** Re-places the last bet's chips, so repeating a bet is one click (or Enter); dropped if no longer affordable. */
