@@ -35,12 +35,12 @@ checks for two rounds while still being visibly broken. UI work is done when the
 owner has *looked at the running window*, or when a screenshot has been checked pixel-by-pixel.
 
 **Last verified 2026-10-08:** `mvn test` 44/44 green, and the owner ran the window on the
-`guide-scroll-and-esc` branch, which includes everything since 2026-10-07: keyboard
+`insurance-badge` branch, which includes everything since 2026-10-07: keyboard
 shortcuts, remembered bet, Leave Table, the shared overlay helpers, the flat card fade-in
 stagger, the chip rail reusing `ChipView` (no drop shadow on the rail, unchanged on bet piles),
 the true count (shown under Hi-Lo, absent under Red Seven), the setup form on bare felt, the
-counting guide behind the setup form's **?** button (scrolling in a short window) and Esc
-closing popups.
+counting guide behind the setup form's **?** button (scrolling in a short window), Esc
+closing popups and the lost insurance bet on the message line during play.
 The session's own machine had no JDK or Maven, so every change from that day was compiled and
 checked only on the owner's other machine.
 
@@ -296,7 +296,7 @@ counting defects were fixed (see **Project history**).
 
 ### Low impact
 
-2. **`GameController` is 1,087 lines — 48% of the 2,280-line main source tree.** Every overlay
+2. **`GameController` is 1,095 lines — 48% of the 2,288-line main source tree.** Every overlay
    builder, render pass, animation and phase transition lives in one class. Splitting it is
    Large effort, hence its placement in the backlog rather than here.
 
@@ -312,8 +312,6 @@ Ordered by value per unit of effort. Items marked ⟵ are pulled from the old ro
   `CardView.faceDown()` nodes, small offsets) at a fixed table position; on deal, animate a
   temporary node via `TranslateTransition` between `Node.localToScene()` positions, then swap
   in the real `CardView`. Iterate with the owner watching the window, not from code review.
-- **Insurance visibility during play** — once taken, nothing on the table shows it until the
-  round-over message. A small chip stack or badge would close the loop.
 
 ### Medium impact, medium effort
 - **Hole-card flip animation** (`RotateTransition` on the Y-axis, swapping textures at 90°)
@@ -466,6 +464,13 @@ gotchas**; this is the "what happened when" record.
   Then the `guide-scroll-and-esc` PR, closing the two gaps that PR left: the guide scrolls
   when the window is shorter than it (it never grew the window, so a short one squeezed
   it), and Esc dismisses the guide, settings and confirm popups. Main source → 2,280 lines.
+  Then the `insurance-badge` PR, which turned out smaller than the backlog item it closed
+  ("insurance visibility during play"). The engine settles insurance at the dealer peek, so
+  there is never a live side bet to show while the player acts: by then it's either won (and
+  the round is already over) or lost. The fix is the round-over insurance note shown on the
+  "Your move" line too, both coming from one `insuranceNote()`. That's a message suffix, not
+  a felt badge; a chip stack on the table would only show a bet that's already gone.
+
 
 ## graphify
 
