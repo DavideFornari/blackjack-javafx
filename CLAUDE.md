@@ -35,10 +35,11 @@ checks for two rounds while still being visibly broken. UI work is done when the
 owner has *looked at the running window*, or when a screenshot has been checked pixel-by-pixel.
 
 **Last verified 2026-10-08:** `mvn test` 44/44 green, and the owner ran the window on the
-`true-count-and-cleanups` branch, which includes everything since 2026-10-07: keyboard
+`counting-guide-on-setup` branch, which includes everything since 2026-10-07: keyboard
 shortcuts, remembered bet, Leave Table, the shared overlay helpers, the flat card fade-in
 stagger, the chip rail reusing `ChipView` (no drop shadow on the rail, unchanged on bet piles),
-the true count (shown under Hi-Lo, absent under Red Seven) and the setup form on bare felt.
+the true count (shown under Hi-Lo, absent under Red Seven), the setup form on bare felt and
+the counting guide behind the setup form's **?** button.
 The session's own machine had no JDK or Maven, so every change from that day was compiled and
 checked only on the owner's other machine.
 
@@ -214,8 +215,8 @@ Break these and something subtle fails, usually silently.
 - **Prefer a custom in-theme overlay to `Dialog`/`Alert`.** Both stock dialogs this project
   tried were rejected: near-invisible default header text, a system look that broke the felt
   table, and OS-locale button captions (`ButtonType.YES`/`CANCEL` rendered "Sì"/"Annulla" on
-  an Italian machine). All four popups are now plain `VBox`es reusing `setup-overlay`/
-  `setup-card`. The confirm, settings and insurance ones are built by `overlay(maxWidth,
+  an Italian machine). All five popups are now plain `VBox`es reusing `setup-overlay`/
+  `setup-card`. The confirm, settings, insurance and counting-guide ones are built by `overlay(maxWidth,
   content...)` with `buttonRow(...)`; the setup screen has its own builder (title outside the
   card). Every popup is toggled with `show(node, visible)`, which sets `visible` and `managed`
   together — use it for any node that should drop out of layout while hidden.
@@ -287,7 +288,7 @@ counting defects were fixed (see **Project history**).
 
 ### Low impact
 
-2. **`GameController` is 1,013 lines — 46% of the 2,206-line main source tree.** Every overlay
+2. **`GameController` is 1,066 lines — 47% of the 2,259-line main source tree.** Every overlay
    builder, render pass, animation and phase transition lives in one class. Splitting it is
    Large effort, hence its placement in the backlog rather than here.
 
@@ -445,6 +446,15 @@ gotchas**; this is the "what happened when" record.
   paths), the **graphify** section below is committed, but its search hooks live in the
   untracked `.claude/settings.local.json` on a trial basis. Its `merge=graphify` line was
   deliberately kept out of `.gitattributes`, since `graph.json` is never committed.
+  Then the `counting-guide-on-setup` PR: a small round **?** (`setup-help-button`) beside the
+  counting-system combo opens a "Counting" guide overlay — what each system tags, how its
+  number is read, then a **Tips on real betting** heading (`setup-heading`) with the
+  recommendation (Hi-Lo first, Red Seven if dividing is too much, Zen/Omega II once Hi-Lo is
+  automatic). On owner review the system paragraphs dropped all talk of how hard a count is
+  to keep, since the table counts for the player; difficulty only matters at a real table,
+  so it lives under the tips heading. Content is a fixed text covering all four systems,
+  so `CountingSystem` stayed untouched. Sources: Wikipedia's card-counting article and Las
+  Vegas Advisor (Red Seven's 80%-of-Hi-Lo figure and pivot). Main source → 2,259 lines.
 
 ## graphify
 
