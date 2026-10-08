@@ -47,6 +47,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
@@ -813,6 +814,10 @@ public final class GameController {
     private void refresh() {
         boolean setupPhase = phase == Phase.SETUP;
         show(setupOverlay, setupPhase);
+        // Hidden, not unmanaged: the setup form sits on bare felt (no leftovers from the last
+        // session) while the table keeps its size, so the window doesn't resize around it.
+        tableLayout.setVisible(!setupPhase);
+        shoeInfoLabel.setVisible(!setupPhase);
 
         if (setupPhase) {
             return;
@@ -823,6 +828,10 @@ public final class GameController {
         if (showCardCount) {
             shoeInfo += "   |   " + countingSystem.displayName() + " count: "
                     + formatSigned(table.runningCount(countingSystem));
+            if (countingSystem.isBalanced()) {
+                // Locale.ROOT: an Italian locale would print "+1,5".
+                shoeInfo += String.format(Locale.ROOT, " (true %+.1f)", table.trueCount(countingSystem));
+            }
         }
         shoeInfoLabel.setText(shoeInfo);
 

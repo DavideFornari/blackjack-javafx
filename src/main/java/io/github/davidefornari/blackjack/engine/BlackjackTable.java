@@ -67,6 +67,10 @@ public final class BlackjackTable {
         return shoe.runningCount(system);
     }
 
+    public double trueCount(CountingSystem system) {
+        return shoe.trueCount(system);
+    }
+
     /** Deducts the bet, reshuffles if the shoe has hit its penetration limit, and deals the opening hands. */
     public void startRound(long bet) {
         if (bet <= 0) {

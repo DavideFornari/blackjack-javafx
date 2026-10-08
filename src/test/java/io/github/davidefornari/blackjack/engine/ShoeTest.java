@@ -63,6 +63,17 @@ class ShoeTest {
     }
 
     @Test
+    void trueCountIsTheRunningCountPerDeckRemaining() {
+        Shoe shoe = new Shoe(1, 100);
+        for (int i = 0; i < 26; i++) {
+            shoe.draw();
+        }
+
+        // Half a deck left, so the true count is double the running count.
+        assertEquals(2.0 * shoe.runningCount(CountingSystem.HI_LO), shoe.trueCount(CountingSystem.HI_LO));
+    }
+
+    @Test
     void balancedCountsStartAtZeroAndFinishAFullShoeAtZero() {
         Shoe shoe = new Shoe(2, 100);
         for (CountingSystem system : BALANCED) {

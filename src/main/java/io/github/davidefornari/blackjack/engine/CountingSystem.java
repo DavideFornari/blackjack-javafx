@@ -88,4 +88,9 @@ public enum CountingSystem {
     public int initialRunningCount(int deckCount) {
         return 0;
     }
+
+    /** Balanced systems tag a full deck to 0 and are played on the true count; an unbalanced one (Red Seven) on the running count. */
+    public boolean isBalanced() {
+        return initialRunningCount(1) == 0;
+    }
 }
