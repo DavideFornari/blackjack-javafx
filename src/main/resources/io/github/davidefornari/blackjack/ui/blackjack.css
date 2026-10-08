@@ -236,6 +236,12 @@ Button:disabled {
     -fx-font-weight: bold;
 }
 
+/* A ScrollPane and its viewport paint modena's light background; let the dark card show through. */
+.setup-scroll,
+.setup-scroll > .viewport {
+    -fx-background-color: transparent;
+}
+
 .setup-card .setup-heading {
     -fx-text-fill: #ffd700;
     -fx-font-size: 15px;
