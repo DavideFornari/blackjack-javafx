@@ -34,10 +34,11 @@ exception thrown" proof that a visual change landed: the window icon work below 
 checks for two rounds while still being visibly broken. UI work is done when the project
 owner has *looked at the running window*, or when a screenshot has been checked pixel-by-pixel.
 
-**Last verified 2026-10-08:** `mvn test` 42/42 green, and the owner ran the window on the
-`tighten-chip-view` branch, which includes everything since 2026-10-07: keyboard shortcuts,
-remembered bet, Leave Table, the shared overlay helpers, the flat card fade-in stagger and the
-chip rail reusing `ChipView` (no drop shadow on the rail, unchanged on bet piles).
+**Last verified 2026-10-08:** `mvn test` 44/44 green, and the owner ran the window on the
+`true-count-and-cleanups` branch, which includes everything since 2026-10-07: keyboard
+shortcuts, remembered bet, Leave Table, the shared overlay helpers, the flat card fade-in
+stagger, the chip rail reusing `ChipView` (no drop shadow on the rail, unchanged on bet piles),
+the true count (shown under Hi-Lo, absent under Red Seven) and the setup form on bare felt.
 The session's own machine had no JDK or Maven, so every change from that day was compiled and
 checked only on the owner's other machine.
 
@@ -286,22 +287,13 @@ counting defects were fixed (see **Project history**).
 
 ### Low impact
 
-2. **`hand-wager-stack` has no CSS rule** despite being applied in `HandPane`.
-3. **`GameController` is 1,004 lines — 46% of the 2,184-line main source tree.** Every overlay
+2. **`GameController` is 1,013 lines — 46% of the 2,206-line main source tree.** Every overlay
    builder, render pass, animation and phase transition lives in one class. Splitting it is
    Large effort, hence its placement in the backlog rather than here.
-4. **After "New Game", the setup form sits over the previous session's table.** `refresh()`
-   returns early in SETUP, so the last hands and message stay rendered (dimmed) behind the
-   overlay. Cosmetic; noticed while checking the 2026-10-07 screenshots.
 
 ## Improvement backlog
 
 Ordered by value per unit of effort. Items marked ⟵ are pulled from the old roadmap.
-
-### High impact, small effort
-- **Show the true count**, not just the running count — a running count alone isn't
-  actionable on a 6-deck shoe. Red Seven's initial count is now correct, so the running counts
-  this would divide are sound.
 
 ### High impact, medium effort
 - **Animate only new cards** (issue 1) — the single most visible piece of UI polish available,
@@ -344,7 +336,7 @@ Ordered by value per unit of effort. Items marked ⟵ are pulled from the old ro
   need to loop over players instead of assuming one.
 
 ### Large effort / structural
-- **Split `GameController`** (issue 3) — extract the overlay builders and the render pass at
+- **Split `GameController`** (issue 2) — extract the overlay builders and the render pass at
   minimum. Do this before the class grows again, not as a standalone refactor sprint.
 - **Move to FXML + CSS** if the UI grows much further ⟵ — skipped so far because hand-authored
   `fx:id` wiring couldn't be verified without running it, and the single-file scene graph is
@@ -441,6 +433,18 @@ gotchas**; this is the "what happened when" record.
   into `stack()` (no longer public), and every resource load names its missing path —
   including the stylesheet in `BlackjackApp`, which had the same bare-NPE failure but wasn't
   on the list. Main source → 2,184 lines; the known-issues list renumbered from 6 to 4.
+  Then the `true-count-and-cleanups` PR: the backlog's last small, high-impact item, the true
+  count (`Shoe.trueCount()`, running count per deck remaining), shown next to the running
+  count only for balanced systems (`CountingSystem.isBalanced()`), since Red Seven is played
+  on the running count. It is formatted with `Locale.ROOT`, or an Italian machine prints
+  "+1,5". Bundled with the two cosmetic known issues: the setup form now sits on bare felt
+  (the table is hidden, not unmanaged, so the window keeps its size), and the unstyled
+  `hand-wager-stack` class was removed rather than given an empty rule. Tests 42 → 44; main
+  source → 2,206 lines; known issues 4 → 2. Same day, graphify was set up as a local
+  code-navigation aid: `graphify-out/` is gitignored (generated, and it holds machine-local
+  paths), the **graphify** section below is committed, but its search hooks live in the
+  untracked `.claude/settings.local.json` on a trial basis. Its `merge=graphify` line was
+  deliberately kept out of `.gitattributes`, since `graph.json` is never committed.
 
 ## graphify
 
