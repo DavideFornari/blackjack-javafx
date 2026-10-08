@@ -21,7 +21,6 @@ public final class HandPane extends VBox {
         setSpacing(6);
         cardsRow.setAlignment(Pos.CENTER);
         captionLabel.getStyleClass().add("hand-caption");
-        wagerStack.getStyleClass().add("hand-wager-stack");
         wagerStack.setAlignment(Pos.CENTER);
         totalLabel.getStyleClass().add("hand-total");
         getStyleClass().add("hand-pane");

@@ -3,6 +3,8 @@ package io.github.davidefornari.blackjack.engine;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Spot-checks each system's per-card tags against its published count chart, to catch
@@ -10,6 +12,14 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * logic to {@link CountingSystem}.
  */
 class CountingSystemTest {
+
+    @Test
+    void onlyRedSevenIsUnbalanced() {
+        assertTrue(CountingSystem.HI_LO.isBalanced());
+        assertTrue(CountingSystem.OMEGA_II.isBalanced());
+        assertTrue(CountingSystem.ZEN_COUNT.isBalanced());
+        assertFalse(CountingSystem.RED_SEVEN.isBalanced());
+    }
 
     @Test
     void hiLoTags() {

@@ -119,4 +119,9 @@ public final class Shoe {
     public int runningCount(CountingSystem system) {
         return runningCounts.get(system);
     }
+
+    /** Running count per deck still in the shoe — the number a balanced count is actually played on. */
+    public double trueCount(CountingSystem system) {
+        return runningCount(system) * 52.0 / Math.max(1, cardsRemaining());
+    }
 }
