@@ -34,15 +34,16 @@ exception thrown" proof that a visual change landed: the window icon work below 
 checks for two rounds while still being visibly broken. UI work is done when the project
 owner has *looked at the running window*, or when a screenshot has been checked pixel-by-pixel.
 
-**Last verified 2026-10-08:** `mvn test` 44/44 green, and the owner ran the window on the
-`split-game-controller` branch, which includes everything since 2026-10-07: keyboard
+**Last verified 2026-10-09:** `mvn test` 44/44 green, and the owner ran the window on the
+`share-round-continuation` branch, which includes everything since 2026-10-07: keyboard
 shortcuts, remembered bet, Leave Table, the shared overlay helpers, the chip rail reusing
 `ChipView` (no drop shadow on the rail, unchanged on bet piles), the true count (shown under
 Hi-Lo, absent under Red Seven), the setup form on bare felt, the counting guide behind the
 setup form's **?** button (scrolling in a short window), Esc closing popups, the lost
 insurance bet on the message line during play, the deck, cards dealt off it at any window
 size (deal order, fast hits, splits, dealer turn, insurance), the Rider Back card back, and
-every flow again after the `GameController` split (table, popups, banners).
+every flow again after the `GameController` split (table, popups, banners) and after
+`continueRound()` (normal end, bust, natural at the deal, double, split, insurance).
 The session's own machine had no JDK or Maven, so every change from that day was compiled and
 checked only on the owner's other machine.
 
@@ -217,6 +218,12 @@ Break these and something subtle fails, usually silently.
   before peeking and the round only resolves once `takeInsurance()`/`declineInsurance()` is
   called. Any caller must check `isInsurancePending()` *before* `isPlayerTurnComplete()` —
   during the pending window the latter reports `true` while nothing is actually settled.
+- **The UI decides how a round moves on in one place: `GameController.continueRound()`.**
+  The deal, a declined or lost insurance bet, and every player action call it. It settles
+  and shows the banner once the player's turn is over, and otherwise plays on. Each entry
+  point used to repeat that check, and the deal's copy once lost its banner (2026-09-29).
+  A new entry point, such as late surrender, should call `continueRound()` rather than
+  copy the check.
 
 **JavaFX**
 - **Prefer a custom in-theme overlay to `Dialog`/`Alert`.** Both stock dialogs this project
@@ -318,7 +325,7 @@ counting defects were fixed (see **Project history**).
 
 ### Low impact
 
-1. **`GameController` is still 766 lines — 30% of the 2,529-line main source tree.** The
+1. **`GameController` is still 764 lines — 30% of the 2,527-line main source tree.** The
    self-contained parts are out (table, three popups, banner). What remains (setup screen,
    insurance popup, controls, every phase transition) all reads or drives the round's state.
    Splitting further needs callbacks both ways, hence its place in the backlog.
@@ -505,6 +512,14 @@ gotchas**; this is the "what happened when" record.
   deliberately left in: both are tied to the round's flow, and moving them would trade
   direct field access for callbacks. `handStatusText` stayed too, passed to
   `TablePane.show()` as a function, since the insurance preview uses it as well.
+- **2026-10-09** — The graph was refreshed with `/graphify --update` and used to check the
+  split. By file, `GameController` ↔ `TablePane` is exactly the designed 5 edges. The
+  community view's 43 edges were mostly shared import nodes. Betweenness *rose* without
+  them (0.325 → 0.412), so the controller is the real UI↔engine bridge, which is expected.
+  Listing its engine calls against the code (23 calls, 20 methods, all needed) found
+  `isPlayerTurnComplete()` checked in three entry points with the same settle-or-play-on
+  logic. That was the shape behind the 2026-09-29 deal-time banner regression. The
+  `share-round-continuation` PR folded it into `continueRound()`.
 
 
 ## graphify
