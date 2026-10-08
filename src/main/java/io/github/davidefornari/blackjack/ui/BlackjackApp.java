@@ -4,6 +4,8 @@ import javafx.application.Application;
 import javafx.scene.Scene;
 import javafx.stage.Stage;
 
+import java.util.Objects;
+
 public final class BlackjackApp extends Application {
 
     @Override
@@ -13,8 +15,9 @@ public final class BlackjackApp extends Application {
         // so the window always fits the real content instead of a guessed constant that goes
         // stale (and crops controls) whenever the layout grows.
         Scene scene = new Scene(controller.getRoot());
+        String css = "/io/github/davidefornari/blackjack/ui/blackjack.css";
         scene.getStylesheets().add(
-                getClass().getResource("/io/github/davidefornari/blackjack/ui/blackjack.css").toExternalForm());
+                Objects.requireNonNull(getClass().getResource(css), "Missing resource " + css).toExternalForm());
 
         stage.setTitle("Blackjack");
         stage.getIcons().add(AppIcon.load());

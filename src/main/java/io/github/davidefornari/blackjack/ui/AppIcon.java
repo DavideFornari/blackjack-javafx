@@ -2,6 +2,8 @@ package io.github.davidefornari.blackjack.ui;
 
 import javafx.scene.image.Image;
 
+import java.util.Objects;
+
 /**
  * Loads the window/taskbar icon: an Ace and a Jack of spades. Unlike the table's cards
  * (deliberately styled shapes, no image assets — see CLAUDE.md), this one is a real
@@ -17,7 +19,7 @@ final class AppIcon {
     }
 
     static Image load() {
-        return new Image(AppIcon.class.getResourceAsStream(
-                "/io/github/davidefornari/blackjack/ui/app-icon.png"));
+        String path = "/io/github/davidefornari/blackjack/ui/app-icon.png";
+        return new Image(Objects.requireNonNull(AppIcon.class.getResourceAsStream(path), "Missing resource " + path));
     }
 }

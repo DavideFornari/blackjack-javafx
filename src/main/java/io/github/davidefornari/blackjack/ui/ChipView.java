@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * A single casino chip, rendered from real chip photos (cropped from
@@ -25,45 +26,32 @@ public final class ChipView extends ImageView {
     /** Every chip value, smallest first. */
     public static final List<Long> DENOMINATIONS = List.copyOf(IMAGES.keySet());
 
-    public ChipView(long denomination) {
-        super(imageFor(denomination));
-        setFitWidth(DIAMETER);
-        setFitHeight(DIAMETER);
+    public ChipView(long denomination, double diameter) {
+        super(Objects.requireNonNull(IMAGES.get(denomination), "No chip image for denomination " + denomination));
+        setFitWidth(diameter);
+        setFitHeight(diameter);
         setPreserveRatio(true);
         setSmooth(true);
-        getStyleClass().add("chip");
     }
 
-    public static Image imageFor(long denomination) {
-        Image image = IMAGES.get(denomination);
-        if (image == null) {
-            throw new IllegalArgumentException("No chip image for denomination " + denomination);
-        }
-        return image;
-    }
-
-    /** Greedily breaks a wager down into the largest available chip denominations, for rendering a stack that represents an amount rather than a literal click history (e.g. after a split or double, where the wager is a number, not a list of clicks). */
-    public static List<Long> breakdown(long amount) {
-        List<Long> chips = new ArrayList<>();
+    /**
+     * A ready-to-display stack of chips for {@code amount}: the fewest chips, biggest at the
+     * bottom. It represents an amount, not the click history (after a split or double the
+     * wager is just a number).
+     */
+    public static List<ChipView> stack(long amount) {
+        List<ChipView> chips = new ArrayList<>();
         long remaining = amount;
         for (long denomination : DENOMINATIONS.reversed()) {
-            while (remaining >= denomination) {
-                chips.add(denomination);
-                remaining -= denomination;
+            for (; remaining >= denomination; remaining -= denomination) {
+                ChipView chip = new ChipView(denomination, DIAMETER);
+                chip.getStyleClass().add("chip"); // the drop shadow is a stack effect; the chip rail has none
+                chip.setTranslateY(-chips.size() * 5);
+                chips.add(chip);
             }
         }
-        return chips;
-    }
-
-    /** A ready-to-display stack of chips for {@code amount}: minimal chip count, biggest denomination at the bottom. */
-    public static List<ChipView> stack(long amount) {
-        List<Long> denominations = breakdown(amount);
-        List<ChipView> chips = new ArrayList<>();
-        for (int i = 0; i < denominations.size(); i++) {
-            ChipView chip = new ChipView(denominations.get(i));
-            chip.setTranslateY(-i * 5);
-            chips.add(chip);
-        }
+        // ponytail: a remainder under the smallest chip isn't drawn. Every wager is a sum of
+        // chips today; render it as a label if arbitrary amounts ever reach a stack.
         return chips;
     }
 
@@ -79,6 +67,6 @@ public final class ChipView extends ImageView {
 
     private static Image load(String colorName) {
         String path = "/io/github/davidefornari/blackjack/ui/chips/" + colorName + ".png";
-        return new Image(ChipView.class.getResourceAsStream(path));
+        return new Image(Objects.requireNonNull(ChipView.class.getResourceAsStream(path), "Missing resource " + path));
     }
 }
