@@ -38,6 +38,8 @@ import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Pane;
+import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
@@ -84,7 +86,11 @@ public final class GameController {
     private final VBox insuranceOverlay;
     private final BorderPane tableLayout;
 
+    private static final int DECK_CARDS = 5;
+    private static final double DECK_STEP = 3;
+
     private final HandPane dealerPane = new HandPane();
+    private final Pane deckPane = new Pane();
     private final HBox playerHandsBox = new HBox(24);
     private final Label messageLabel = new Label();
     private final Label bankrollLabel = new Label();
@@ -588,13 +594,42 @@ public final class GameController {
         messageLabel.getStyleClass().add("message-label");
         playerHandsBox.setAlignment(Pos.CENTER);
 
-        VBox center = new VBox(24, dealerPane, messageLabel, playerHandsBox);
+        VBox center = new VBox(24, buildDealerRow(), messageLabel, playerHandsBox);
         center.setAlignment(Pos.CENTER);
         center.setPadding(new Insets(10, 20, 10, 20));
         layout.setCenter(center);
 
         layout.setBottom(buildControlsArea());
         return layout;
+    }
+
+    /**
+     * The dealer's hand centred on the table, with the deck (a few face-down cards, each a step
+     * up and right of the one below) on its right. An empty spacer as wide as the deck sits on
+     * the left, so the dealer stays centred and a long dealer hand pushes the window wider
+     * instead of sliding under the deck.
+     */
+    private HBox buildDealerRow() {
+        for (int i = 0; i < DECK_CARDS; i++) {
+            CardView back = CardView.faceDown();
+            back.relocate(i * DECK_STEP, (DECK_CARDS - 1 - i) * DECK_STEP);
+            deckPane.getChildren().add(back);
+        }
+        double deckWidth = CardView.WIDTH + (DECK_CARDS - 1) * DECK_STEP;
+        double deckHeight = CardView.HEIGHT + (DECK_CARDS - 1) * DECK_STEP;
+        deckPane.setMinSize(deckWidth, deckHeight);
+        deckPane.setMaxSize(deckWidth, deckHeight);
+
+        Region balance = new Region();
+        balance.setMinWidth(deckWidth);
+        Region leftGap = new Region();
+        Region rightGap = new Region();
+        HBox.setHgrow(leftGap, Priority.ALWAYS);
+        HBox.setHgrow(rightGap, Priority.ALWAYS);
+
+        HBox row = new HBox(16, balance, leftGap, dealerPane, rightGap, deckPane);
+        row.setAlignment(Pos.CENTER);
+        return row;
     }
 
     private HBox buildChipRow() {
