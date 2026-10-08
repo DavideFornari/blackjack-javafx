@@ -35,11 +35,12 @@ checks for two rounds while still being visibly broken. UI work is done when the
 owner has *looked at the running window*, or when a screenshot has been checked pixel-by-pixel.
 
 **Last verified 2026-10-08:** `mvn test` 44/44 green, and the owner ran the window on the
-`counting-guide-on-setup` branch, which includes everything since 2026-10-07: keyboard
+`guide-scroll-and-esc` branch, which includes everything since 2026-10-07: keyboard
 shortcuts, remembered bet, Leave Table, the shared overlay helpers, the flat card fade-in
 stagger, the chip rail reusing `ChipView` (no drop shadow on the rail, unchanged on bet piles),
-the true count (shown under Hi-Lo, absent under Red Seven), the setup form on bare felt and
-the counting guide behind the setup form's **?** button.
+the true count (shown under Hi-Lo, absent under Red Seven), the setup form on bare felt, the
+counting guide behind the setup form's **?** button (scrolling in a short window) and Esc
+closing popups.
 The session's own machine had no JDK or Maven, so every change from that day was compiled and
 checked only on the owner's other machine.
 
@@ -249,7 +250,14 @@ Break these and something subtle fails, usually silently.
   focus key events go to the `Scene` and never reach `root`. Each key just `fire()`s its
   button, so the button's disabled state stays the single source of truth. It does nothing
   while any overlay is visible, so the setup and settings text fields keep their keys; a new
-  overlay must be added to that check.
+  overlay must be added to that check. Esc is the one exception: it hides the topmost popup
+  that has a Close/Cancel (guide, settings, confirm), which is all those buttons do. A new
+  dismissable popup belongs in that list; setup and insurance stay out, since both need an
+  answer.
+- **A `ScrollPane` sizes itself from its content's unwrapped height**, so wrapped `Label`s
+  come out one line tall and the pane scrolls even with room to spare. The counting guide
+  binds `prefViewportHeight` to the text's laid-out height; copy that for any future
+  scrolling text. Its background needs the transparent `setup-scroll` rule on the felt.
 - The single confirmation overlay is shared: `showConfirmOverlay(title, message, confirmText,
   action)`. The `setup-title` font truncates past ~10 characters at the card's 340px width, so
   keep confirm titles short ("Cash Out?" — "Leave the Table" rendered as "Leave the T...").
@@ -288,7 +296,7 @@ counting defects were fixed (see **Project history**).
 
 ### Low impact
 
-2. **`GameController` is 1,066 lines — 47% of the 2,259-line main source tree.** Every overlay
+2. **`GameController` is 1,087 lines — 48% of the 2,280-line main source tree.** Every overlay
    builder, render pass, animation and phase transition lives in one class. Splitting it is
    Large effort, hence its placement in the backlog rather than here.
 
@@ -455,6 +463,9 @@ gotchas**; this is the "what happened when" record.
   so it lives under the tips heading. Content is a fixed text covering all four systems,
   so `CountingSystem` stayed untouched. Sources: Wikipedia's card-counting article and Las
   Vegas Advisor (Red Seven's 80%-of-Hi-Lo figure and pivot). Main source → 2,259 lines.
+  Then the `guide-scroll-and-esc` PR, closing the two gaps that PR left: the guide scrolls
+  when the window is shorter than it (it never grew the window, so a short one squeezed
+  it), and Esc dismisses the guide, settings and confirm popups. Main source → 2,280 lines.
 
 ## graphify
 
