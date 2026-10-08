@@ -333,12 +333,10 @@ public final class GameController {
             long mainHandProfit = settleRound();
             long insuranceProfit = insurance.get().payout() - insurance.get().amountWagered();
             winLoseBanner.showInsuranceWin(mainHandProfit + insuranceProfit);
-        } else if (table.isPlayerTurnComplete()) {
-            winLoseBanner.showOutcome(settleRound());
+            refresh();
         } else {
-            phase = Phase.PLAYER_TURN;
+            continueRound();
         }
-        refresh();
     }
 
     private BorderPane buildTableLayout() {
@@ -409,10 +407,10 @@ public final class GameController {
 
     private void wireActions() {
         dealButton.setOnAction(e -> onDeal());
-        hitButton.setOnAction(e -> { table.hit(); afterPlayerAction(); });
-        standButton.setOnAction(e -> { table.stand(); afterPlayerAction(); });
-        doubleButton.setOnAction(e -> { table.doubleDown(); afterPlayerAction(); });
-        splitButton.setOnAction(e -> { table.split(); afterPlayerAction(); });
+        hitButton.setOnAction(e -> { table.hit(); continueRound(); });
+        standButton.setOnAction(e -> { table.stand(); continueRound(); });
+        doubleButton.setOnAction(e -> { table.doubleDown(); continueRound(); });
+        splitButton.setOnAction(e -> { table.split(); continueRound(); });
         nextRoundButton.setOnAction(e -> onNextRound());
         leaveTableButton.setOnAction(e -> onLeaveTable());
         newGameButton.setOnAction(e -> onNewGame());
@@ -505,14 +503,7 @@ public final class GameController {
             showInsuranceOverlayAfterDelay();
             return;
         }
-        if (table.isPlayerTurnComplete()) {
-            // Decided at the deal — a natural, or a dealer natural peeked on a ten up-card.
-            // The banner is this call site's job too, not just afterPlayerAction()'s.
-            winLoseBanner.showOutcome(settleRound());
-        } else {
-            phase = Phase.PLAYER_TURN;
-        }
-        refresh();
+        continueRound(); // a natural, or a dealer natural peeked on a ten up-card, settles right here
     }
 
     /** Adds a chip to the current bet, ignored if it would exceed the bankroll (the button should already be disabled in that case). */
@@ -537,9 +528,16 @@ public final class GameController {
         return chips.stream().mapToLong(Long::longValue).sum();
     }
 
-    private void afterPlayerAction() {
+    /**
+     * The one place a round moves on, after the deal, an insurance decision or any player
+     * action: settle with its banner once the player's turn is over, otherwise play on. Each
+     * entry point once carried its own copy of this, and the deal's copy lost its banner.
+     */
+    private void continueRound() {
         if (table.isPlayerTurnComplete()) {
             winLoseBanner.showOutcome(settleRound());
+        } else {
+            phase = Phase.PLAYER_TURN;
         }
         refresh();
     }
