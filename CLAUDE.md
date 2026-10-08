@@ -35,8 +35,9 @@ checks for two rounds while still being visibly broken. UI work is done when the
 owner has *looked at the running window*, or when a screenshot has been checked pixel-by-pixel.
 
 **Last verified 2026-10-08:** `mvn test` 42/42 green, and the owner ran the window on the
-`engine-and-ui-trims` branch, which includes everything since 2026-10-07: keyboard shortcuts,
-remembered bet, Leave Table, the shared overlay helpers and the flat card fade-in stagger.
+`tighten-chip-view` branch, which includes everything since 2026-10-07: keyboard shortcuts,
+remembered bet, Leave Table, the shared overlay helpers, the flat card fade-in stagger and the
+chip rail reusing `ChipView` (no drop shadow on the rail, unchanged on bet piles).
 The session's own machine had no JDK or Maven, so every change from that day was compiled and
 checked only on the owner's other machine.
 
@@ -258,7 +259,14 @@ Break these and something subtle fails, usually silently.
   all derive from it.
 - Every chip stack renders via `ChipView.stack(amount)`: a greedy breakdown into the fewest
   chips, biggest at the bottom. It represents an *amount*, not the click history — 5+10+5+25
-  renders as 25+10+10.
+  renders as 25+10+10. A remainder under the smallest chip isn't drawn (marked `ponytail:` in
+  the code); harmless while every wager is a sum of chips.
+- The `.chip` drop shadow is added by `stack()`, not the `ChipView` constructor, so the chip
+  rail can reuse `new ChipView(denomination, size)` without it. Bet piles get the shadow; the
+  rail's only effect is its button's gold hover glow.
+- Every classpath resource load (`ChipView.load()`, `AppIcon.load()`, the stylesheet in
+  `BlackjackApp`) goes through `Objects.requireNonNull(..., "Missing resource " + path)`, so a
+  renamed asset fails naming the file. Keep new resource loads on the same pattern.
 - Per-hand wager stacks fall out of the engine for free: `Hand.wager()` already doubles on
   `doubleDown()` and is copied to both hands on `split()`, so no `Map<Hand, List<Long>>`
   bookkeeping is needed.
@@ -278,17 +286,11 @@ counting defects were fixed (see **Project history**).
 
 ### Low impact
 
-2. **`ChipView.breakdown()` silently drops what it can't represent** (7 → a single 5-chip).
-   Safe today because every wager is a sum of chips, but it will under-render the first time
-   an arbitrary amount reaches it. It's also `public` though only `stack()` uses it.
-3. **Missing-resource failures are opaque.** `ChipView.load()` and `AppIcon.load()` hand a
-   possibly-null stream to `new Image(...)`; a renamed asset surfaces as an NPE — an
-   `ExceptionInInitializerError` for `ChipView`'s static map — rather than naming the file.
-4. **`hand-wager-stack` has no CSS rule** despite being applied in `HandPane`.
-5. **`GameController` is 1,011 lines — 46% of the 2,198-line main source tree.** Every overlay
+2. **`hand-wager-stack` has no CSS rule** despite being applied in `HandPane`.
+3. **`GameController` is 1,004 lines — 46% of the 2,184-line main source tree.** Every overlay
    builder, render pass, animation and phase transition lives in one class. Splitting it is
    Large effort, hence its placement in the backlog rather than here.
-6. **After "New Game", the setup form sits over the previous session's table.** `refresh()`
+4. **After "New Game", the setup form sits over the previous session's table.** `refresh()`
    returns early in SETUP, so the last hands and message stay rendered (dimmed) behind the
    overlay. Cosmetic; noticed while checking the 2026-10-07 screenshots.
 
@@ -342,7 +344,7 @@ Ordered by value per unit of effort. Items marked ⟵ are pulled from the old ro
   need to loop over players instead of assuming one.
 
 ### Large effort / structural
-- **Split `GameController`** (issue 5) — extract the overlay builders and the render pass at
+- **Split `GameController`** (issue 3) — extract the overlay builders and the render pass at
   minimum. Do this before the class grows again, not as a standalone refactor sprint.
 - **Move to FXML + CSS** if the UI grows much further ⟵ — skipped so far because hand-authored
   `fx:id` wiring couldn't be verified without running it, and the single-file scene graph is
@@ -431,7 +433,11 @@ gotchas**; this is the "what happened when" record.
   `Dealer.showsAceOrTen()` dropped, since `hasBlackjack()` implies it; the counting-system
   choice moved from `Player` to `GameController`; `Suit.Color` became `Suit.isRed()`; chip
   values come from `ChipView.DENOMINATIONS` only; and `animateIn()` staggers each card a flat
-  90ms instead of compounding pauses (the 5th card used to wait ~1.6s). Deliberately not done:
-  reusing `ChipView` for the chip rail's icons, since it would add the `.chip` drop shadow to
-  the rail. Main source 2,351 → 2,198 lines; tests unchanged at 42 (three assertions on the
-  deleted flags removed).
+  90ms instead of compounding pauses (the 5th card used to wait ~1.6s). Main source
+  2,351 → 2,198 lines; tests unchanged at 42 (three assertions on the deleted flags removed).
+  Then the `tighten-chip-view` PR, which picked up the audit item skipped above (reusing
+  `ChipView` for the chip rail) once the drop shadow moved from the constructor to `stack()`,
+  bundled with known issues 2 and 3 since all three touched `ChipView`: `breakdown()` folded
+  into `stack()` (no longer public), and every resource load names its missing path —
+  including the stylesheet in `BlackjackApp`, which had the same bare-NPE failure but wasn't
+  on the list. Main source → 2,184 lines; the known-issues list renumbered from 6 to 4.
